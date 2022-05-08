@@ -1,4 +1,4 @@
-name: ExampleModule
-main: dev.plex.ExampleModule
-description: An example module for Plex
+name: NushModule
+main: dev.plex.nush.NushModule
+description: Stops raiding in its tracks.
 version: 1.0

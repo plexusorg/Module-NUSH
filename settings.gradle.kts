@@ -1,2 +1,2 @@
-rootProject.name = "plexmodule-template"
+rootProject.name = "Module-NUSH"
 
