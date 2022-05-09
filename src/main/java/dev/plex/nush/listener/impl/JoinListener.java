@@ -6,9 +6,6 @@ import dev.plex.listener.PlexListener;
 import dev.plex.nush.NushModule;
 import dev.plex.player.PlexPlayer;
 import dev.plex.rank.RankManager;
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
-import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.player.PlayerJoinEvent;
@@ -24,7 +21,13 @@ public class JoinListener extends PlexListener
         PlexPlayer plexPlayer = DataUtils.getPlayer(player.getUniqueId());
         RankManager rankManager = plex.getRankManager();
 
-        if(!rankManager.isAdmin(plexPlayer)) return; // we only want to add admins
-        if(ChatListener.work.containsKey())
+        if (!rankManager.isAdmin(plexPlayer))
+        {
+            return; // we only want to add admins
+        }
+        /*if (ChatListener.work.containsKey())
+        {
+
+        }*/
     }
 }
