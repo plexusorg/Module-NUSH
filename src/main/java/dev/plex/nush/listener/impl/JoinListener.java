@@ -10,24 +10,22 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.player.PlayerJoinEvent;
 
-public class JoinListener extends PlexListener
-{
-    @EventHandler
-    public void onPlayerJoin(PlayerJoinEvent event)
-    {
-        Player player = event.getPlayer();
-        NushModule module = NushModule.getInstance();
-        Plex plex = module.getPlex();
-        PlexPlayer plexPlayer = DataUtils.getPlayer(player.getUniqueId());
-        RankManager rankManager = plex.getRankManager();
+public class JoinListener extends PlexListener {
 
-        if (!rankManager.isAdmin(plexPlayer))
-        {
-            return; // we only want to add admins
-        }
+	@EventHandler
+	public void onPlayerJoin(PlayerJoinEvent event) {
+		Player player = event.getPlayer();
+		NushModule module = NushModule.getInstance();
+		Plex plex = module.getPlex();
+		PlexPlayer plexPlayer = DataUtils.getPlayer(player.getUniqueId());
+		RankManager rankManager = plex.getRankManager();
+
+		if (!rankManager.isAdmin(plexPlayer)) {
+			return; // we only want to add admins
+		}
         /*if (ChatListener.work.containsKey())
         {
 
         }*/
-    }
+	}
 }
