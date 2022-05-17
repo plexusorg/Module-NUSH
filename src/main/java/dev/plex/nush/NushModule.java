@@ -2,6 +2,7 @@ package dev.plex.nush;
 
 import dev.plex.Plex;
 import dev.plex.module.PlexModule;
+import dev.plex.nush.handler.impl.ActionHandler;
 import dev.plex.nush.handler.impl.CommandHandler;
 import dev.plex.nush.handler.impl.ListenerHandler;
 import java.util.Map;
@@ -27,6 +28,7 @@ public class NushModule extends PlexModule {
 			plex.messages.addDefault(entry.getKey(), entry.getValue());
 		}
 
+		new ActionHandler().init(this);
 		new CommandHandler().init(this);
 		new ListenerHandler().init(this);
 	}

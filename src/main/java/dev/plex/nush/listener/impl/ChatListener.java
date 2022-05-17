@@ -26,13 +26,13 @@ public class ChatListener extends PlexListener {
 
 	@EventHandler(priority = EventPriority.HIGHEST)
 	public void onChat(AsyncChatEvent event) {
+		if(event.isCancelled()) return;
 		Player player = event.getPlayer();
 		Instant firstJoined = Instant.ofEpochMilli(player.getFirstPlayed());
 		Instant rightNow = Instant.now();
 		long difference = (Duration.between(firstJoined, rightNow).getSeconds() / 60);
 		if (difference >= 15) {
-			PlexLog.debug(player.getName(), "has been on the server for", difference,
-				"minutes, so Nush will skip them.");
+			PlexLog.debug("{0} has been on the server for {1} minutes, so Nush will skip them.", player.getName(), difference);
 			return;
 		}
 
@@ -42,7 +42,7 @@ public class ChatListener extends PlexListener {
 		RankManager rankManager = plex.getRankManager();
 
 		if (rankManager.isAdmin(plexPlayer)) {
-			PlexLog.debug(player.getName(), "is an admin so Nush will skip them.");
+			PlexLog.debug("{0} is an admin so Nush will skip them.", player.getName());
 			return; // we needn't process the chat message if they're an admin
 		}
 
@@ -51,6 +51,11 @@ public class ChatListener extends PlexListener {
 		Message message = new Message(event.getPlayer().getUniqueId(), event.originalMessage());
 		ActionHandler.MAP.put(key, message);
 		Component component = ActionHandler.getMessage(message);
+
+		// Send the user the message so they think it got sent
+		player.sendMessage(component);
+
+		component = component.append(Component.text("\n"));
 
 		for (NushAction value : NushAction.values()) {
 			String command = String.format("/nush work %s %d", key, value.ordinal);
@@ -63,6 +68,6 @@ public class ChatListener extends PlexListener {
 			);
 		}
 
-		PlexUtils.broadcast(component);
+		PlexUtils.broadcastToAdmins(component);
 	}
 }

@@ -8,6 +8,7 @@ import dev.plex.nush.NushAction;
 import dev.plex.nush.NushModule;
 import dev.plex.nush.handler.impl.ActionHandler;
 import dev.plex.rank.enums.Rank;
+import dev.plex.util.PlexLog;
 import dev.plex.util.PlexUtils;
 import java.util.UUID;
 import net.kyori.adventure.text.Component;
@@ -17,6 +18,9 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+
+import static dev.plex.nush.NushAction.ACCEPT;
+import static dev.plex.nush.NushAction.CANCEL;
 
 @CommandParameters(name = "nush", aliases = "raidmode", description = "Toggle NUSH on or off.", usage = "/<command> [on | enable | off | disable | toggle]")
 @CommandPermissions(level = Rank.ADMIN, permission = "plex.nush.command")
@@ -36,28 +40,34 @@ public class NUSHCommand extends PlexCommand {
 		} else {
 			if (args[0].equalsIgnoreCase("work")) {
 				try {
-					UUID nushIdentifier = UUID.fromString(args[0]);
+					UUID nushIdentifier = UUID.fromString(args[1]);
 					Message nushMessage = ActionHandler.MAP.get(nushIdentifier);
+
+					if (nushMessage == null) {
+						return null;
+					}
 
 					NushAction action = NushAction.fromOrdinal(Integer.parseInt(args[2]));
 					if (action == null) {
 						return null;
 					}
+
+					if (action == ACCEPT || action == CANCEL) {
+						ActionHandler.resolve(nushIdentifier, action);
+						return Component.text(action.humanReadable, NamedTextColor.YELLOW);
+					}
+
 					StringBuilder command = new StringBuilder();
 
-					switch (action) {
-						case ACCEPT:
-						case CANCEL:
-							break;
-						default:
-							command.append(action.name().toLowerCase());
-							break;
-					}
+					command.append(action.name().toLowerCase());
+					command.append(" ");
+					command.append(nushMessage.getSender());
 
-					command.append(" ").append(nushMessage.getSender());
 					if (!command.toString().trim().isEmpty()) {
+						PlexLog.debug("Dispatching command: {0}", command.toString());
 						Bukkit.dispatchCommand(commandSender, command.toString());
 					}
+
 					ActionHandler.resolve(nushIdentifier, action);
 					return Component.text(action.humanReadable, NamedTextColor.YELLOW);
 				} catch (Exception ignored) {

@@ -22,6 +22,7 @@ import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
 import net.kyori.adventure.text.minimessage.tag.standard.StandardTags;
 import org.bukkit.Bukkit;
+import org.bukkit.entity.Player;
 
 public class ActionHandler implements Handler {
 
@@ -39,8 +40,11 @@ public class ActionHandler implements Handler {
 			return;
 		}
 		if (action == NushAction.ACCEPT) {
-			Audience.audience(Bukkit.getServer())
-				.sendMessage(Identity.identity(message.getSender()), getMessage(message));
+			for (Player player : Bukkit.getOnlinePlayers()) {
+				if (player.getUniqueId() != message.getSender()) {
+					player.sendMessage(Identity.identity(message.getSender()), getMessage(message));
+				}
+			}
 		}
 		MAP.remove(uuid);
 	}
