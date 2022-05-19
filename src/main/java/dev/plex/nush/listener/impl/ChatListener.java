@@ -22,60 +22,52 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 
-public class ChatListener extends PlexListener
-{
+public class ChatListener extends PlexListener {
 
-    @EventHandler(priority = EventPriority.HIGHEST)
-    public void onChat(AsyncChatEvent event)
-    {
-        if (event.isCancelled())
-        {
-            return;
-        }
-        Player player = event.getPlayer();
-        Instant firstJoined = Instant.ofEpochMilli(player.getFirstPlayed());
-        Instant rightNow = Instant.now();
-        long difference = (Duration.between(firstJoined, rightNow).getSeconds() / 60);
-        if (difference >= 15)
-        {
-            PlexLog.debug("{0} has been on the server for {1} minutes, so Nush will skip them.", player.getName(), difference);
-            return;
-        }
+	@EventHandler(priority = EventPriority.HIGHEST)
+	public void onChat(AsyncChatEvent event) {
+		if(event.isCancelled()) return;
+		Player player = event.getPlayer();
+		Instant firstJoined = Instant.ofEpochMilli(player.getFirstPlayed());
+		Instant rightNow = Instant.now();
+		long difference = (Duration.between(firstJoined, rightNow).getSeconds() / 60);
+		if (difference >= 15) {
+			PlexLog.debug("{0} has been on the server for {1} minutes, so Nush will skip them.", player.getName(), difference);
+			return;
+		}
 
-        NushModule module = NushModule.getInstance();
-        Plex plex = module.getPlex();
-        PlexPlayer plexPlayer = DataUtils.getPlayer(player.getUniqueId());
-        RankManager rankManager = plex.getRankManager();
+		NushModule module = NushModule.getInstance();
+		Plex plex = module.getPlex();
+		PlexPlayer plexPlayer = DataUtils.getPlayer(player.getUniqueId());
+		RankManager rankManager = plex.getRankManager();
 
-        if (rankManager.isAdmin(plexPlayer))
-        {
-            PlexLog.debug("{0} is an admin so Nush will skip them.", player.getName());
-            return; // we needn't process the chat message if they're an admin
-        }
+		if (rankManager.isAdmin(plexPlayer)) {
+			PlexLog.debug("{0} is an admin so Nush will skip them.", player.getName());
+			return; // we needn't process the chat message if they're an admin
+		}
 
-        event.setCancelled(true);
-        UUID key = UUID.randomUUID();
-        Message message = new Message(event.getPlayer().getUniqueId(), event.originalMessage());
-        ActionHandler.MAP.put(key, message);
-        Component component = ActionHandler.getMessage(message);
+		event.setCancelled(true);
+		UUID key = UUID.randomUUID();
+		Message message = new Message(event.getPlayer().getUniqueId(), event.originalMessage());
+		ActionHandler.MAP.put(key, message);
+		Component component = ActionHandler.getMessage(message);
 
-        // Send the user the message so they think it got sent
-        player.sendMessage(component);
+		// Send the user the message so they think it got sent
+		player.sendMessage(component);
 
-        component = component.append(Component.text("\n"));
+		component = component.append(Component.text("\n"));
 
-        for (NushAction value : NushAction.values())
-        {
-            String command = String.format("/nush work %s %d", key, value.ordinal);
-            component = component.append(
-                    Component.text(String.format("[%s] ", value.humanReadable))
-                            .clickEvent(ClickEvent.runCommand(command))
-                            .hoverEvent(
-                                    Component.text(command, NamedTextColor.YELLOW)
-                            )
-            );
-        }
+		for (NushAction value : NushAction.values()) {
+			String command = String.format("/nush work %s %d", key, value.ordinal);
+			component = component.append(
+				Component.text(String.format("[%s] ", value.humanReadable))
+					.clickEvent(ClickEvent.runCommand(command))
+					.hoverEvent(
+						Component.text(command, NamedTextColor.YELLOW)
+					)
+			);
+		}
 
-        PlexUtils.broadcastToAdmins(component);
-    }
+		PlexUtils.broadcastToAdmins(component);
+	}
 }
