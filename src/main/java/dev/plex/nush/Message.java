@@ -7,8 +7,9 @@ import net.kyori.adventure.text.Component;
 
 @Data
 @AllArgsConstructor
-public class Message {
+public class Message
+{
 
-	UUID sender;
-	Component message;
+    UUID sender;
+    Component message;
 }
