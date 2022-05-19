@@ -2,7 +2,8 @@ package dev.plex.nush.handler;
 
 import dev.plex.nush.NushModule;
 
-public interface Handler {
+public interface Handler
+{
 
-	void init(NushModule module);
+    void init(NushModule module);
 }
