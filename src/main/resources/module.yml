@@ -1,4 +1,4 @@
 name: Module-NUSH
 main: dev.plex.nush.NushModule
 description: Stops raiding in its tracks.
-version: 1.0
+version: 1.1

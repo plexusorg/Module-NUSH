@@ -19,12 +19,12 @@ dependencies {
     compileOnly("org.projectlombok:lombok:1.18.24")
     annotationProcessor("org.projectlombok:lombok:1.18.24")
     compileOnly("io.papermc.paper:paper-api:1.18.2-R0.1-SNAPSHOT")
-    compileOnly("dev.plex:server:1.1-SNAPSHOT")
-    compileOnly("dev.plex:api:1.1-SNAPSHOT")
+    compileOnly("dev.plex:server:1.1")
+    compileOnly("dev.plex:api:1.1")
 }
 
 group = "dev.plex"
-version = "1.0"
+version = "1.1"
 description = "Module-NUSH"
 
 java {
