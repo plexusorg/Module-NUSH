@@ -18,13 +18,13 @@ repositories {
 dependencies {
     compileOnly("org.projectlombok:lombok:1.18.28")
     annotationProcessor("org.projectlombok:lombok:1.18.28")
-    compileOnly("io.papermc.paper:paper-api:1.20.1-R0.1-SNAPSHOT")
+    compileOnly("io.papermc.paper:paper-api:1.20.4-R0.1-SNAPSHOT")
     compileOnly("dev.plex:server:1.4-SNAPSHOT")
 }
 
 group = "dev.plex"
-version = "1.0"
-description = "ExampleModule"
+version = "1.4-SNAPSHOT"
+description = "Module-NUSH"
 
 java {
     toolchain.languageVersion.set(JavaLanguageVersion.of(17))
@@ -39,7 +39,7 @@ publishing {
 }
 
 tasks.getByName<Jar>("jar") {
-    archiveBaseName.set("Module-ExampleModule")
+    archiveBaseName.set("Module-NUSH")
     archiveVersion.set("")
 }
 

@@ -1,4 +1,4 @@
-name: Module-Example
-main: dev.plex.ExampleModule
-description: An example module for Plex
-version: 1.0
+name: Module-NUSH
+main: dev.plex.NUSHModule
+description: A module to prevent raids from new players
+version: 1.4-SNAPSHOT

@@ -1,0 +1,8 @@
+# NUSH Configuration File #
+
+server:
+  # Should NUSH be enabled or disabled - this is also toggleable via the /nush command
+  enabled: false
+
+  # How many minutes before a new player can chat with other players
+  wait_time: 5
