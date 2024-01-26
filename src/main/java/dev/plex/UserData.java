@@ -33,7 +33,7 @@ public class UserData
                         USERS_MAP.remove(player.getUniqueId());
                     }
                 },
-                20L * 60L * NUSHModule.getConfig().getInt("server.wait_time", 2));
+                20L * 60L * NUSHModule.getTime());
     }
 
     public static boolean isNewPlayer(Player player)

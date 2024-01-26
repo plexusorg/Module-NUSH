@@ -68,7 +68,7 @@ public class NUSHCommand extends PlexCommand
                         return MiniMessage.miniMessage().deserialize("<red>The time must be a number!");
                     }
 
-                    NUSHModule.getConfig().set("server.wait_time", time);
+                    NUSHModule.setTime(time);
                     return MiniMessage.miniMessage().deserialize("<gray>The wait time for new players before they can chat is now set to <yellow>" + time + "</yellow> minutes.");
                 }
 

@@ -48,4 +48,10 @@ public class NUSHModule extends PlexModule
         enabled = toggle;
         config.set("server.enabled", toggle);
     }
+
+    public static void setTime(int minutes)
+    {
+        time = minutes;
+        config.set("server.wait_time", minutes);
+    }
 }
