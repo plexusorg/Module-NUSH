@@ -9,7 +9,6 @@ import lombok.Getter;
 
 public class NUSHModule extends PlexModule
 {
-
     @Getter
     private static NUSHModule module;
     @Getter

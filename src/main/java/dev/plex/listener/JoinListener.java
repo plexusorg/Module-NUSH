@@ -12,7 +12,6 @@ import org.bukkit.event.player.PlayerJoinEvent;
 
 public class JoinListener extends PlexListener
 {
-
     @EventHandler
     public void onJoin(PlayerJoinEvent event)
     {

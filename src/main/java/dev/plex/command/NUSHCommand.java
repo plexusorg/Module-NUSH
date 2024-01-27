@@ -20,7 +20,6 @@ import java.util.List;
 @CommandPermissions(permission = "plex.nush.use")
 public class NUSHCommand extends PlexCommand
 {
-
     @Override
     protected Component execute(@NotNull CommandSender sender, @Nullable Player player, @NotNull String[] args)
     {

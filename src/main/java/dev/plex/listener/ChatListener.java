@@ -13,7 +13,6 @@ import org.bukkit.event.EventPriority;
 
 public class ChatListener extends PlexListener
 {
-
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onChat(AsyncChatEvent event)
     {
