@@ -10,7 +10,6 @@ import java.util.UUID;
 
 public class UserData
 {
-
     private static final Map<UUID, UserData> USERS_MAP = new HashMap<>();
     private BukkitTask task = null;
 
