@@ -1,4 +1,4 @@
-# NUSH Configuration File #
+# NUSH Configuration File
 
 server:
   # Should NUSH be enabled or disabled - this is also toggleable via the /nush command
