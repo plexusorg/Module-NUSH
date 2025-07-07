@@ -1,4 +1,4 @@
 name: Module-NUSH
 main: dev.plex.NUSHModule
 description: A module to prevent raids from new players
-version: 1.5-SNAPSHOT
+version: 1.5
