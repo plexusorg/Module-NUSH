@@ -16,18 +16,18 @@ repositories {
 }
 
 dependencies {
-    compileOnly("org.projectlombok:lombok:1.18.42")
-    annotationProcessor("org.projectlombok:lombok:1.18.42")
-    compileOnly("io.papermc.paper:paper-api:1.21.10-R0.1-SNAPSHOT")
-    compileOnly("dev.plex:server:1.6")
+    compileOnly("org.projectlombok:lombok:1.18.46")
+    annotationProcessor("org.projectlombok:lombok:1.18.46")
+    compileOnly("io.papermc.paper:paper-api:26.1.2.build.+")
+    compileOnly("dev.plex:api:2.0-SNAPSHOT")
 }
 
 group = "dev.plex"
-version = "1.6"
+version = "2.0-SNAPSHOT"
 description = "Module-NUSH"
 
 java {
-    toolchain.languageVersion.set(JavaLanguageVersion.of(21))
+    toolchain.languageVersion.set(JavaLanguageVersion.of(25))
 }
 
 publishing {

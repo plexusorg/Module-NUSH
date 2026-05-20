@@ -1,36 +1,36 @@
 package dev.plex;
 
-import org.bukkit.Bukkit;
+import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 import org.bukkit.entity.Player;
-import org.bukkit.scheduler.BukkitTask;
 
-import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class UserData
 {
-    private static final Map<UUID, UserData> USERS_MAP = new HashMap<>();
-    private BukkitTask task = null;
+    private static final Map<UUID, UserData> USERS_MAP = new ConcurrentHashMap<>();
+    private ScheduledTask task = null;
 
-    public UserData(Player player)
+    public UserData(UUID uuid)
     {
-        USERS_MAP.put(player.getUniqueId(), this);
+        USERS_MAP.put(uuid, this);
     }
 
-    public static void queueNewPlayer(Player player)
+    public static void queueNewPlayer(NUSHModule module, Player player)
     {
-        UserData data = new UserData(player);
-        data.task = Bukkit.getScheduler().runTaskLater(NUSHModule.getModule().getPlex(),
-                () ->
+        UUID uuid = player.getUniqueId();
+        UserData data = new UserData(uuid);
+        data.task = module.api().scheduler().runGlobalLater(
+                scheduledTask ->
                 {
                     if (data.isValid())
                     {
-                        data.task.cancel();
-                        USERS_MAP.remove(player.getUniqueId());
+                        data.task = null;
+                        USERS_MAP.remove(uuid, data);
                     }
                 },
-                20L * 60L * NUSHModule.getTime());
+                20L * 60L * module.getTime());
     }
 
     public static boolean isNewPlayer(Player player)
@@ -40,8 +40,11 @@ public class UserData
 
     public static void removePlayer(Player player)
     {
-        USERS_MAP.get(player.getUniqueId()).task.cancel();
-        USERS_MAP.remove(player.getUniqueId());
+        UserData data = USERS_MAP.remove(player.getUniqueId());
+        if (data != null && data.isValid())
+        {
+            data.task.cancel();
+        }
     }
 
     public static void clear()

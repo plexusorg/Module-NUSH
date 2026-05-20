@@ -2,11 +2,8 @@ package dev.plex.command;
 
 import dev.plex.NUSHModule;
 import dev.plex.UserData;
-import dev.plex.command.annotation.CommandParameters;
-import dev.plex.command.annotation.CommandPermissions;
-import dev.plex.util.PlexUtils;
+import dev.plex.command.SimplePlexCommand;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
@@ -16,10 +13,20 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
-@CommandParameters(name = "nush", usage = "/<command> <on | off | status | time <minutes> | remove <player>>", description = "The main command to manage the NUSH module")
-@CommandPermissions(permission = "plex.nush.use")
-public class NUSHCommand extends PlexCommand
+public class NUSHCommand extends SimplePlexCommand
 {
+    private final NUSHModule module;
+
+    public NUSHCommand(NUSHModule module)
+    {
+        super(command("nush")
+                .description("The main command to manage the NUSH module")
+                .usage("/<command> <on | off | status | time <minutes> | remove <player>>")
+                .permission("plex.nush.use")
+                .build());
+        this.module = module;
+    }
+
     @Override
     protected Component execute(@NotNull CommandSender sender, @Nullable Player player, @NotNull String[] args)
     {
@@ -29,20 +36,20 @@ public class NUSHCommand extends PlexCommand
             {
                 case "on" ->
                 {
-                    NUSHModule.toggle(true);
-                    return MiniMessage.miniMessage().deserialize("<gray>The status for NUSH is now <green>enabled</green>.");
+                    module.toggle(true);
+                    return messageComponent("nushEnabled");
                 }
 
                 case "off" ->
                 {
-                    NUSHModule.toggle(false);
+                    module.toggle(false);
                     UserData.clear();
-                    return MiniMessage.miniMessage().deserialize("<gray>The status for NUSH is now <red>disabled</red>.");
+                    return messageComponent("nushDisabled");
                 }
 
                 case "status" ->
                 {
-                    return MiniMessage.miniMessage().deserialize("<gray>The status for NUSH is currently " + (NUSHModule.isEnabled() ? "<green>enabled</green>" : "<red>disabled</red>") + ".");
+                    return messageComponent("nushStatus", module.isEnabled() ? "<green>enabled</green>" : "<red>disabled</red>");
                 }
 
                 default ->
@@ -64,11 +71,11 @@ public class NUSHCommand extends PlexCommand
                     }
                     catch (NumberFormatException ex)
                     {
-                        return MiniMessage.miniMessage().deserialize("<red>The time must be a number!");
+                        return messageComponent("timeMustBeNumber");
                     }
 
-                    NUSHModule.setTime(time);
-                    return MiniMessage.miniMessage().deserialize("<gray>The wait time for new players before they can chat is now set to <yellow>" + time + "</yellow> minutes.");
+                    module.setTime(time);
+                    return messageComponent("waitTimeSet", time);
                 }
 
                 case "remove" ->
@@ -77,11 +84,11 @@ public class NUSHCommand extends PlexCommand
                     if (UserData.isNewPlayer(target))
                     {
                         UserData.removePlayer(target);
-                        return MiniMessage.miniMessage().deserialize("<yellow>" + target.getName() + " <gray>has been removed.");
+                        return messageComponent("playerRemoved", target.getName());
                     }
                     else
                     {
-                        return MiniMessage.miniMessage().deserialize("<red>That player is currently not NUSH'd");
+                        return messageComponent("playerNotNushed");
                     }
                 }
 
@@ -96,7 +103,7 @@ public class NUSHCommand extends PlexCommand
     }
 
     @Override
-    public @NotNull List<String> smartTabComplete(@NotNull CommandSender sender, @NotNull String alias, @NotNull String[] args)
+    protected @NotNull List<String> suggestions(@NotNull CommandSender sender, @NotNull String alias, @NotNull String[] args)
     {
         if (args.length == 1 && silentCheckPermission(sender, this.getPermission()))
         {
@@ -105,7 +112,7 @@ public class NUSHCommand extends PlexCommand
 
         if (args.length == 2 && args[0].equalsIgnoreCase("remove") && silentCheckPermission(sender, this.getPermission()))
         {
-            return PlexUtils.getPlayerNameList();
+            return onlinePlayerNames();
         }
         return Collections.emptyList();
     }
