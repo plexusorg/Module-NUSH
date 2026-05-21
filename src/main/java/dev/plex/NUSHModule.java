@@ -17,6 +17,7 @@ public class NUSHModule extends PlexModule
     {
         config = new ModuleConfig(this, "nush/config.yml", "config.yml");
         loadMessages("nush/messages.yml");
+        registerCommand(new NUSHCommand(this));
     }
 
     @Override
@@ -25,7 +26,6 @@ public class NUSHModule extends PlexModule
         config.load();
         enabled = config.getBoolean("server.enabled", false);
         time = config.getInt("server.wait_time", 2);
-        registerCommand(new NUSHCommand(this));
         registerListener(new JoinListener(this));
         registerListener(new ChatListener(this));
     }
