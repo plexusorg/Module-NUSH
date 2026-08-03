@@ -15,8 +15,8 @@ public class NUSHModule extends PlexModule
     @Override
     public void load()
     {
-        config = new ModuleConfig(this, "nush/config.yml", "config.yml");
-        loadMessages("nush/messages.yml");
+        config = new ModuleConfig(this, "config.yml", "config.yml");
+        loadMessages("messages.yml");
         registerCommand(new NUSHCommand(this));
     }
 
