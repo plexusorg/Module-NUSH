@@ -21,7 +21,7 @@ public class UserData
     {
         UUID uuid = player.getUniqueId();
         UserData data = new UserData(uuid);
-        data.task = module.api().scheduler().runGlobalLater(
+        data.task = module.scheduler().runGlobalLater(
                 scheduledTask ->
                 {
                     if (data.isValid())

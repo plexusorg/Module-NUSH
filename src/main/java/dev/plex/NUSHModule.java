@@ -1,21 +1,21 @@
 package dev.plex;
 
 import dev.plex.command.NUSHCommand;
-import dev.plex.config.ModuleConfig;
+import dev.plex.api.config.ModuleConfiguration;
 import dev.plex.listener.ChatListener;
 import dev.plex.listener.JoinListener;
 import dev.plex.module.PlexModule;
 
 public class NUSHModule extends PlexModule
 {
-    private ModuleConfig config;
+    private ModuleConfiguration config;
     private boolean enabled;
     private int time;
 
     @Override
     public void load()
     {
-        config = new ModuleConfig(this, "config.yml", "config.yml");
+        config = api().moduleConfigs().create(this, "config.yml");
         loadMessages("messages.yml");
         registerCommand(new NUSHCommand(this));
     }
@@ -36,7 +36,7 @@ public class NUSHModule extends PlexModule
         UserData.clear();
     }
 
-    public ModuleConfig getConfig()
+    public ModuleConfiguration getConfig()
     {
         return config;
     }
