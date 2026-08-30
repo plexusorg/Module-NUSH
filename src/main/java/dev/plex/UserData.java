@@ -12,7 +12,7 @@ public class UserData
     private static final Map<UUID, UserData> USERS_MAP = new ConcurrentHashMap<>();
     private ScheduledTask task = null;
 
-    public UserData(UUID uuid)
+    private UserData(UUID uuid)
     {
         USERS_MAP.put(uuid, this);
     }
@@ -53,7 +53,7 @@ public class UserData
         USERS_MAP.clear();
     }
 
-    public boolean isValid()
+    private boolean isValid()
     {
         return task != null;
     }

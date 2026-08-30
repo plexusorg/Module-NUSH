@@ -36,11 +36,6 @@ public class NUSHModule extends PlexModule
         UserData.clear();
     }
 
-    public ModuleConfiguration getConfig()
-    {
-        return config;
-    }
-
     public boolean isEnabled()
     {
         return enabled;
