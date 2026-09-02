@@ -9,52 +9,35 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class UserData
 {
-    private static final Map<UUID, UserData> USERS_MAP = new ConcurrentHashMap<>();
-    private ScheduledTask task = null;
-
-    private UserData(UUID uuid)
-    {
-        USERS_MAP.put(uuid, this);
-    }
+    private static final Map<UUID, ScheduledTask> TASKS = new ConcurrentHashMap<>();
 
     public static void queueNewPlayer(NUSHModule module, Player player)
     {
         UUID uuid = player.getUniqueId();
-        UserData data = new UserData(uuid);
-        data.task = module.scheduler().runGlobalLater(
+        ScheduledTask task = module.scheduler().runGlobalLater(
                 scheduledTask ->
                 {
-                    if (data.isValid())
-                    {
-                        data.task = null;
-                        USERS_MAP.remove(uuid, data);
-                    }
+                    TASKS.remove(uuid, scheduledTask);
                 },
                 20L * 60L * module.getTime());
+        ScheduledTask previous = TASKS.put(uuid, task);
+        if (previous != null) previous.cancel();
     }
 
     public static boolean isNewPlayer(Player player)
     {
-        return USERS_MAP.containsKey(player.getUniqueId());
+        return TASKS.containsKey(player.getUniqueId());
     }
 
     public static void removePlayer(Player player)
     {
-        UserData data = USERS_MAP.remove(player.getUniqueId());
-        if (data != null && data.isValid())
-        {
-            data.task.cancel();
-        }
+        ScheduledTask task = TASKS.remove(player.getUniqueId());
+        if (task != null) task.cancel();
     }
 
     public static void clear()
     {
-        USERS_MAP.values().stream().filter(UserData::isValid).forEach(data -> data.task.cancel());
-        USERS_MAP.clear();
-    }
-
-    private boolean isValid()
-    {
-        return task != null;
+        TASKS.values().forEach(ScheduledTask::cancel);
+        TASKS.clear();
     }
 }
