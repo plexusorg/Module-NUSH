@@ -1,7 +1,6 @@
 package dev.plex.listener;
 
 import dev.plex.NUSHModule;
-import dev.plex.UserData;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -24,11 +23,16 @@ public class JoinListener implements Listener
         if (!player.hasPlayedBefore() && module.isEnabled())
         {
             module.api().logging().debug("Adding {0} to the new player list", player.getName());
-            UserData.queueNewPlayer(module, player);
+            module.queueNewPlayer(player);
             String playerName = player.getName();
-            Bukkit.getOnlinePlayers().stream()
-                    .filter(recipient -> recipient.hasPermission("plex.nush.view"))
-                    .forEach(recipient -> recipient.sendMessage(module.messageComponent("newPlayerMarked", playerName, module.getTime())));
+            module.scheduler().runGlobal(() -> Bukkit.getOnlinePlayers().forEach(recipient ->
+                    module.scheduler().runEntity(recipient, () ->
+                    {
+                        if (recipient.hasPermission("plex.nush.view"))
+                        {
+                            recipient.sendMessage(module.messageComponent("newPlayerMarked", playerName, module.getTime()));
+                        }
+                    })));
         }
     }
 }

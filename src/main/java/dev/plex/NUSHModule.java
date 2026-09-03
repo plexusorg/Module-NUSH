@@ -5,10 +5,18 @@ import dev.plex.api.config.ModuleConfiguration;
 import dev.plex.listener.ChatListener;
 import dev.plex.listener.JoinListener;
 import dev.plex.module.PlexModule;
+import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
+import org.bukkit.entity.Player;
+
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 
 public class NUSHModule extends PlexModule
 {
     private ModuleConfiguration config;
+    private final Map<UUID, ScheduledTask> newPlayers = new ConcurrentHashMap<>();
     private boolean enabled;
     private int time;
 
@@ -33,7 +41,7 @@ public class NUSHModule extends PlexModule
     @Override
     public void disable()
     {
-        UserData.clear();
+        clearNewPlayers();
     }
 
     public boolean isEnabled()
@@ -58,5 +66,37 @@ public class NUSHModule extends PlexModule
         time = minutes;
         config.set("server.wait_time", minutes);
         config.save();
+    }
+
+    public void queueNewPlayer(Player player)
+    {
+        UUID uuid = player.getUniqueId();
+        ScheduledTask task = scheduler().runAsyncLater(
+                scheduledTask -> newPlayers.remove(uuid, scheduledTask), time, TimeUnit.MINUTES);
+        ScheduledTask previous = newPlayers.put(uuid, task);
+        if (previous != null)
+        {
+            previous.cancel();
+        }
+    }
+
+    public boolean isNewPlayer(Player player)
+    {
+        return newPlayers.containsKey(player.getUniqueId());
+    }
+
+    public void removePlayer(Player player)
+    {
+        ScheduledTask task = newPlayers.remove(player.getUniqueId());
+        if (task != null)
+        {
+            task.cancel();
+        }
+    }
+
+    public void clearNewPlayers()
+    {
+        newPlayers.values().forEach(ScheduledTask::cancel);
+        newPlayers.clear();
     }
 }

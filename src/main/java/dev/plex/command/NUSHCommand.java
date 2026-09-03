@@ -1,7 +1,7 @@
 package dev.plex.command;
 
+import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import dev.plex.NUSHModule;
-import dev.plex.UserData;
 import dev.plex.command.SimplePlexCommand;
 import net.kyori.adventure.text.Component;
 import org.bukkit.command.CommandSender;
@@ -12,6 +12,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import io.papermc.paper.command.brigadier.CommandSourceStack;
 
 public class NUSHCommand extends SimplePlexCommand
 {
@@ -28,11 +29,30 @@ public class NUSHCommand extends SimplePlexCommand
     }
 
     @Override
-    protected Component execute(@NotNull CommandSender sender, @Nullable Player player, @NotNull String[] args)
+    protected void configureCommand(LiteralArgumentBuilder<CommandSourceStack> command)
     {
-        if (args.length == 1)
+        command.executes(context -> executeCommand(context, (sender, player) -> usage()));
+        command.then(word("action")
+                .suggests((context, builder) -> suggestMatching(builder, List.of("on", "off", "status", "time", "remove")))
+                .executes(context -> executeCommand(context,
+                        (sender, player) -> executeAction(sender, string(context, "action"), null)))
+                .then(word("value")
+                        .suggests((context, builder) ->
+                        {
+                            return string(context, "action").equalsIgnoreCase("remove")
+                                    ? suggestMatching(builder, onlinePlayerNames()) : builder.buildFuture();
+                        })
+                        .executes(context -> executeCommand(context, (sender, player) -> executeAction(sender,
+                                string(context, "action"), string(context, "value"))))
+                        .then(greedyString("extra").executes(context ->
+                                executeCommand(context, (sender, player) -> usage())))));
+    }
+
+    private Component executeAction(CommandSender sender, String action, @Nullable String value)
+    {
+        if (value == null)
         {
-            switch (args[0].toLowerCase())
+            switch (action.toLowerCase())
             {
                 case "on" ->
                 {
@@ -43,7 +63,7 @@ public class NUSHCommand extends SimplePlexCommand
                 case "off" ->
                 {
                     module.toggle(false);
-                    UserData.clear();
+                    module.clearNewPlayers();
                     return messageComponent("nushDisabled");
                 }
 
@@ -58,16 +78,16 @@ public class NUSHCommand extends SimplePlexCommand
                 }
             }
         }
-        else if (args.length == 2)
+        else
         {
-            switch (args[0].toLowerCase())
+            switch (action.toLowerCase())
             {
                 case "time" ->
                 {
                     int time;
                     try
                     {
-                        time = Integer.parseInt(args[1]);
+                        time = Integer.parseInt(value);
                     }
                     catch (NumberFormatException ex)
                     {
@@ -80,10 +100,10 @@ public class NUSHCommand extends SimplePlexCommand
 
                 case "remove" ->
                 {
-                    final Player target = getNonNullPlayer(args[1]);
-                    if (UserData.isNewPlayer(target))
+                    final Player target = getNonNullPlayer(value);
+                    if (module.isNewPlayer(target))
                     {
-                        UserData.removePlayer(target);
+                        module.removePlayer(target);
                         return messageComponent("playerRemoved", target.getName());
                     }
                     else
@@ -98,22 +118,5 @@ public class NUSHCommand extends SimplePlexCommand
                 }
             }
         }
-
-        return usage();
-    }
-
-    @Override
-    protected @NotNull List<String> suggestions(@NotNull CommandSender sender, @NotNull String alias, @NotNull String[] args)
-    {
-        if (args.length == 1 && silentCheckPermission(sender, this.getPermission()))
-        {
-            return Arrays.asList("on", "off", "status", "time", "remove");
-        }
-
-        if (args.length == 2 && args[0].equalsIgnoreCase("remove") && silentCheckPermission(sender, this.getPermission()))
-        {
-            return onlinePlayerNames();
-        }
-        return Collections.emptyList();
     }
 }

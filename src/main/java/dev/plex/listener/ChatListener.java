@@ -1,7 +1,6 @@
 package dev.plex.listener;
 
 import dev.plex.NUSHModule;
-import dev.plex.UserData;
 import io.papermc.paper.event.player.AsyncChatEvent;
 import io.papermc.paper.chat.ChatRenderer;
 import net.kyori.adventure.audience.Audience;
@@ -25,7 +24,7 @@ public class ChatListener implements Listener
     {
         final Player player = event.getPlayer();
 
-        if (!module.isEnabled() || event.isCancelled() || !UserData.isNewPlayer(player))
+        if (!module.isEnabled() || event.isCancelled() || !module.isNewPlayer(player))
         {
             module.api().logging().debug("NUSH is disabled, event is cancelled or {0} is not on the list", player.getName());
             return;
