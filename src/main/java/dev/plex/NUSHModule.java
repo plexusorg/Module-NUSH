@@ -5,18 +5,22 @@ import dev.plex.api.config.ModuleConfiguration;
 import dev.plex.listener.ChatListener;
 import dev.plex.listener.JoinListener;
 import dev.plex.module.PlexModule;
-import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 import org.bukkit.entity.Player;
 
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class NUSHModule extends PlexModule
 {
     private ModuleConfiguration config;
-    private final Map<UUID, ScheduledTask> newPlayers = new ConcurrentHashMap<>();
+    private final Map<UUID, ScheduledFuture<?>> newPlayers = new ConcurrentHashMap<>();
+    private ScheduledExecutorService expiryExecutor;
     private boolean enabled;
     private int time;
 
@@ -31,6 +35,8 @@ public class NUSHModule extends PlexModule
     @Override
     public void enable()
     {
+        expiryExecutor = Executors.newSingleThreadScheduledExecutor(
+                Thread.ofPlatform().daemon().name("Plex-NUSH-Expiry").factory());
         config.load();
         enabled = config.getBoolean("server.enabled", false);
         time = config.getInt("server.wait_time", 2);
@@ -41,6 +47,11 @@ public class NUSHModule extends PlexModule
     @Override
     public void disable()
     {
+        if (expiryExecutor != null)
+        {
+            expiryExecutor.shutdownNow();
+            expiryExecutor = null;
+        }
         clearNewPlayers();
     }
 
@@ -71,12 +82,14 @@ public class NUSHModule extends PlexModule
     public void queueNewPlayer(Player player)
     {
         UUID uuid = player.getUniqueId();
-        ScheduledTask task = scheduler().runAsyncLater(
-                scheduledTask -> newPlayers.remove(uuid, scheduledTask), time, TimeUnit.MINUTES);
-        ScheduledTask previous = newPlayers.put(uuid, task);
+        AtomicReference<ScheduledFuture<?>> taskReference = new AtomicReference<>();
+        ScheduledFuture<?> task = expiryExecutor.schedule(
+                () -> newPlayers.remove(uuid, taskReference.get()), time, TimeUnit.MINUTES);
+        taskReference.set(task);
+        ScheduledFuture<?> previous = newPlayers.put(uuid, task);
         if (previous != null)
         {
-            previous.cancel();
+            previous.cancel(false);
         }
     }
 
@@ -87,16 +100,16 @@ public class NUSHModule extends PlexModule
 
     public void removePlayer(Player player)
     {
-        ScheduledTask task = newPlayers.remove(player.getUniqueId());
+        ScheduledFuture<?> task = newPlayers.remove(player.getUniqueId());
         if (task != null)
         {
-            task.cancel();
+            task.cancel(false);
         }
     }
 
     public void clearNewPlayers()
     {
-        newPlayers.values().forEach(ScheduledTask::cancel);
+        newPlayers.values().forEach(task -> task.cancel(false));
         newPlayers.clear();
     }
 }

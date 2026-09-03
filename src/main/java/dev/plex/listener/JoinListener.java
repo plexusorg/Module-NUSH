@@ -25,14 +25,7 @@ public class JoinListener implements Listener
             module.api().logging().debug("Adding {0} to the new player list", player.getName());
             module.queueNewPlayer(player);
             String playerName = player.getName();
-            module.scheduler().runGlobal(() -> Bukkit.getOnlinePlayers().forEach(recipient ->
-                    module.scheduler().runEntity(recipient, () ->
-                    {
-                        if (recipient.hasPermission("plex.nush.view"))
-                        {
-                            recipient.sendMessage(module.messageComponent("newPlayerMarked", playerName, module.getTime()));
-                        }
-                    })));
+            Bukkit.broadcast(module.messageComponent("newPlayerMarked", playerName, module.getTime()), "plex.nush.view");
         }
     }
 }
