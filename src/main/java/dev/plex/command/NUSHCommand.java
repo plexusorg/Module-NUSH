@@ -14,6 +14,8 @@ import java.util.Collections;
 import java.util.List;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
 
+import static dev.plex.api.message.MessagePlaceholder.placeholder;
+
 public class NUSHCommand extends SimplePlexCommand
 {
     private final NUSHModule module;
@@ -69,7 +71,7 @@ public class NUSHCommand extends SimplePlexCommand
 
                 case "status" ->
                 {
-                    return messageComponent("nushStatus", module.isEnabled() ? "<green>enabled</green>" : "<red>disabled</red>");
+                    return messageComponent("nushStatus", placeholder("status", module.isEnabled() ? "<green>enabled</green>" : "<red>disabled</red>"));
                 }
 
                 default ->
@@ -95,7 +97,7 @@ public class NUSHCommand extends SimplePlexCommand
                     }
 
                     module.setTime(time);
-                    return messageComponent("waitTimeSet", time);
+                    return messageComponent("waitTimeSet", placeholder("minutes", time));
                 }
 
                 case "remove" ->
@@ -104,7 +106,7 @@ public class NUSHCommand extends SimplePlexCommand
                     if (module.isNewPlayer(target))
                     {
                         module.removePlayer(target);
-                        return messageComponent("playerRemoved", target.getName());
+                        return messageComponent("playerRemoved", placeholder("player", target.getName()));
                     }
                     else
                     {

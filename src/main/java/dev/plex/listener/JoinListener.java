@@ -7,6 +7,8 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
 
+import static dev.plex.api.message.MessagePlaceholder.placeholder;
+
 public class JoinListener implements Listener
 {
     private final NUSHModule module;
@@ -25,7 +27,7 @@ public class JoinListener implements Listener
             module.api().logging().debug("Adding {0} to the new player list", player.getName());
             module.queueNewPlayer(player);
             String playerName = player.getName();
-            Bukkit.broadcast(module.messageComponent("newPlayerMarked", playerName, module.getTime()), "plex.nush.view");
+            Bukkit.broadcast(module.messageComponent("newPlayerMarked", placeholder("player", playerName), placeholder("minutes", module.getTime())), "plex.nush.view");
         }
     }
 }
