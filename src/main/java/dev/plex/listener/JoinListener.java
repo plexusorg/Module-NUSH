@@ -1,13 +1,12 @@
 package dev.plex.listener;
 
 import dev.plex.NUSHModule;
+import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
-
-import static dev.plex.api.message.MessagePlaceholder.placeholder;
 
 public class JoinListener implements Listener
 {
@@ -27,7 +26,7 @@ public class JoinListener implements Listener
             module.api().logging().debug("Adding {0} to the new player list", player.getName());
             module.queueNewPlayer(player);
             String playerName = player.getName();
-            Bukkit.broadcast(module.messageComponent("newPlayerMarked", placeholder("player", playerName), placeholder("minutes", module.getTime())), "plex.nush.view");
+            Bukkit.broadcast(module.messageComponent("newPlayerMarked", Placeholder.parsed("player", playerName), Placeholder.unparsed("minutes", String.valueOf(module.getTime()))), "plex.nush.view");
         }
     }
 }
