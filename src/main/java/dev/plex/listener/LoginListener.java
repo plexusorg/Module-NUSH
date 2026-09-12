@@ -1,9 +1,7 @@
 package dev.plex.listener;
 
 import dev.plex.NUSHModule;
-import dev.plex.NUSHModule.KickMode;
 import dev.plex.nush.Quarantine;
-import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import org.bukkit.Bukkit;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -11,7 +9,6 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.player.AsyncPlayerPreLoginEvent;
 import org.bukkit.event.player.AsyncPlayerPreLoginEvent.Result;
 
-import java.util.Locale;
 import java.util.UUID;
 import java.util.concurrent.CompletionException;
 
@@ -35,34 +32,21 @@ public class LoginListener implements Listener
         UUID uuid = event.getUniqueId();
         Quarantine quarantine = module.quarantine();
         boolean restricted = quarantine.isRestricted(uuid);
-        boolean unverified = restricted || !isVerified(uuid);
+        if (!restricted && isVerified(uuid))
+        {
+            return;
+        }
         boolean playedBefore = Bukkit.getOfflinePlayer(uuid).hasPlayedBefore();
-
-        if (unverified && !restricted && playedBefore)
+        if (!restricted && playedBefore)
         {
             quarantine.markVerified(uuid);
-            unverified = false;
+            return;
         }
-        if (unverified && module.bypassesKick(uuid))
-        {
-            unverified = false;
-        }
-        if (!unverified)
+        if (module.bypassesRestriction(uuid))
         {
             return;
         }
-
-        KickMode mode = module.getKickMode();
-        if (mode == KickMode.RECENT || (mode == KickMode.NEW && !playedBefore))
-        {
-            event.disallow(Result.KICK_OTHER, module.messageComponent("kickDenied"));
-            module.feed().alert(module.messageComponent("newPlayerKicked",
-                    Placeholder.unparsed("player", event.getName()),
-                    Placeholder.unparsed("mode", mode.name().toLowerCase(Locale.ROOT))));
-            return;
-        }
-
-        quarantine.markPending(uuid);
+        quarantine.markPending(uuid, !playedBefore);
     }
 
     @EventHandler(priority = EventPriority.MONITOR)

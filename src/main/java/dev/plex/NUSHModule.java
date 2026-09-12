@@ -15,31 +15,26 @@ import net.milkbowl.vault.permission.Permission;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.RegisteredServiceProvider;
 
-import java.util.Locale;
 import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class NUSHModule extends PlexModule
 {
-    public enum KickMode
-    {
-        OFF, NEW, RECENT
-    }
-
     private static final String BYPASS_PERMISSION = "plex.nush.bypass";
     private static final String FAWE_PLUGIN = "FastAsyncWorldEdit";
 
     private ModuleConfiguration config;
-    private Permission permissions;
     private ScheduledExecutorService executor;
     private Quarantine quarantine;
     private StaffFeed feed;
     private RaidDetector raidDetector;
     private FaweHook faweHook;
+    private final AtomicBoolean missingPermissionsReported = new AtomicBoolean();
     private volatile boolean enabled;
     private volatile int time;
-    private volatile KickMode kickMode;
+    private volatile boolean shadowActive;
 
     @Override
     public void load()
@@ -52,17 +47,9 @@ public class NUSHModule extends PlexModule
     @Override
     public void enable()
     {
-        RegisteredServiceProvider<Permission> provider = Bukkit.getServicesManager().getRegistration(Permission.class);
-        if (provider == null)
-        {
-            throw new IllegalStateException("NUSH requires a Vault permission provider");
-        }
-        permissions = provider.getProvider();
-
         config.load();
         enabled = config.getBoolean("server.enabled", false);
         time = requireAtLeastOne("server.wait_time", config.getInt("server.wait_time", 5));
-        kickMode = readKickMode();
         int intervalSeconds = requireAtLeastOne("feed.interval_seconds", config.getInt("feed.interval_seconds", 10));
         int digestThreshold = requireAtLeastOne("feed.digest_threshold", config.getInt("feed.digest_threshold", 5));
         int logSize = requireAtLeastOne("log.size", config.getInt("log.size", 50));
@@ -85,17 +72,18 @@ public class NUSHModule extends PlexModule
         if (Bukkit.getPluginManager().isPluginEnabled(FAWE_PLUGIN))
         {
             faweHook = new FaweHook(this);
-            faweHook.register();
+            shadowActive = faweHook.register();
         }
         else
         {
-            getLogger().warn("FastAsyncWorldEdit is not enabled; restricted players keep editing the world");
+            getLogger().warn("FastAsyncWorldEdit is not enabled; WorldEdit commands of restricted players are cancelled");
         }
     }
 
     @Override
     public void disable()
     {
+        shadowActive = false;
         if (faweHook != null)
         {
             faweHook.unregister();
@@ -130,9 +118,10 @@ public class NUSHModule extends PlexModule
         return time;
     }
 
-    public KickMode getKickMode()
+    // True while FAWE routes restricted edits through the shadow extent; otherwise commands are cancelled instead.
+    public boolean shadowActive()
     {
-        return kickMode;
+        return shadowActive;
     }
 
     public Quarantine quarantine()
@@ -164,32 +153,19 @@ public class NUSHModule extends PlexModule
         config.save();
     }
 
-    public void setKickMode(KickMode mode)
+    public boolean bypassesRestriction(UUID uuid)
     {
-        kickMode = mode;
-        config.set("server.kick_mode", mode.name().toLowerCase(Locale.ROOT));
-        config.save();
-    }
-
-    public boolean bypassesKick(UUID uuid)
-    {
-        return permissions.playerHas((String) null, Bukkit.getOfflinePlayer(uuid), BYPASS_PERMISSION);
-    }
-
-    private KickMode readKickMode()
-    {
-        // YAML parses a bare "off" as the boolean false, so accept that spelling as the off mode.
-        Object raw = config.get("server.kick_mode");
-        String configured = raw == null ? "off" : Boolean.FALSE.equals(raw) ? "off" : raw.toString();
-        try
+        // Looked up per call because the permissions plugin may enable after Plex.
+        RegisteredServiceProvider<Permission> provider = Bukkit.getServicesManager().getRegistration(Permission.class);
+        if (provider == null)
         {
-            return KickMode.valueOf(configured.toUpperCase(Locale.ROOT));
+            if (missingPermissionsReported.compareAndSet(false, true))
+            {
+                getLogger().warn("No Vault permission provider is registered; {} cannot be checked", BYPASS_PERMISSION);
+            }
+            return false;
         }
-        catch (IllegalArgumentException ex)
-        {
-            getLogger().warn("Invalid server.kick_mode '{}'; expected off, new or recent. Using off", configured);
-            return KickMode.OFF;
-        }
+        return provider.getProvider().playerHas((String) null, Bukkit.getOfflinePlayer(uuid), BYPASS_PERMISSION);
     }
 
     private int requireAtLeastOne(String key, int value)

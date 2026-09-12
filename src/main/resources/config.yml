@@ -8,13 +8,6 @@ server:
   # The minimum is 1 minute.
   wait_time: 5
 
-  # Deny logins while NUSH is enabled - this is also toggleable via /nush kick
-  #   off: nobody is denied
-  #   new: unverified players who join for the first time are denied
-  #   recent: every unverified player is denied
-  # Players with the permission plex.nush.bypass are never denied.
-  kick_mode: "off"
-
 feed:
   # How many seconds one staff feed interval lasts
   interval_seconds: 10

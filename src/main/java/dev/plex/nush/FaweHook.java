@@ -27,7 +27,7 @@ public class FaweHook
         this.module = module;
     }
 
-    public void register()
+    public boolean register()
     {
         // FAWE only keeps a foreign extent when its class name contains an entry of extent.allowed-plugins.
         String extentName = ShadowExtent.class.getName();
@@ -36,11 +36,13 @@ public class FaweHook
                 .anyMatch(entry -> lowerName.contains(entry.toLowerCase(Locale.ROOT)));
         if (!allowed)
         {
-            throw new IllegalStateException("FastAsyncWorldEdit drops the NUSH extent. Add the line '  - "
-                    + extentName + "' below extent.allowed-plugins in plugins/FastAsyncWorldEdit/config.yml,"
-                    + " then restart the server");
+            module.getLogger().error("FastAsyncWorldEdit drops the NUSH extent, so WorldEdit commands of restricted players are"
+                    + " cancelled instead. Add the line '  - {}' below extent.allowed-plugins in"
+                    + " plugins/FastAsyncWorldEdit/config.yml and restart the server", extentName);
+            return false;
         }
         WorldEdit.getInstance().getEventBus().register(this);
+        return true;
     }
 
     public void unregister()

@@ -57,7 +57,7 @@ public class CommandListener implements Listener
             return;
         }
 
-        if (BYPASS_COMMANDS.contains(baseLabel.replaceFirst("^/", "")))
+        if (!module.shadowActive() || BYPASS_COMMANDS.contains(baseLabel.replaceFirst("^/", "")))
         {
             event.setCancelled(true);
         }

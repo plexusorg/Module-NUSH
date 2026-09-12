@@ -4,7 +4,6 @@ import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import dev.plex.NUSHModule;
-import dev.plex.NUSHModule.KickMode;
 import dev.plex.nush.Quarantine.LogEntry;
 import dev.plex.nush.Quarantine.Restriction;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
@@ -28,7 +27,7 @@ public class NUSHCommand extends SimplePlexCommand
 {
     private static final List<String> ACTIONS = List.of("on", "off", "status", "time", "kick", "allow", "revoke",
             "list", "log", "feed");
-    private static final List<String> KICK_MODES = List.of("off", "new", "recent");
+    private static final List<String> KICK_TARGETS = List.of("new", "recent");
     private static final String ALLOW_PERMISSION = "plex.nush.allow";
 
     private final NUSHModule module;
@@ -37,7 +36,7 @@ public class NUSHCommand extends SimplePlexCommand
     {
         super(command("nush")
                 .description("The main command to manage the NUSH module")
-                .usage("/<command> <on | off | status | time <minutes> | kick [off | new | recent] "
+                .usage("/<command> <on | off | status | time <minutes> | kick <new | recent> "
                         + "| allow <player> | revoke <player> | list | log <player> | feed>")
                 .permission("plex.nush.use")
                 .build());
@@ -65,7 +64,7 @@ public class NUSHCommand extends SimplePlexCommand
         String normalized = action.toLowerCase(Locale.ROOT);
         if (normalized.equals("kick"))
         {
-            return suggestMatching(builder, KICK_MODES);
+            return suggestMatching(builder, KICK_TARGETS);
         }
         if (normalized.equals("allow"))
         {
@@ -107,13 +106,7 @@ public class NUSHCommand extends SimplePlexCommand
                 {
                     return messageComponent("nushStatus",
                             Placeholder.parsed("status", module.isEnabled() ? "<green>enabled</green>" : "<red>disabled</red>"),
-                            Placeholder.unparsed("kick", kickModeName()),
                             Placeholder.unparsed("restricted", String.valueOf(module.quarantine().entries().size())));
-                }
-
-                case "kick" ->
-                {
-                    return messageComponent("kickModeStatus", Placeholder.unparsed("mode", kickModeName()));
                 }
 
                 case "list" ->
@@ -142,12 +135,7 @@ public class NUSHCommand extends SimplePlexCommand
 
             case "kick" ->
             {
-                if (!KICK_MODES.contains(value.toLowerCase(Locale.ROOT)))
-                {
-                    return messageComponent("kickModeInvalid");
-                }
-                module.setKickMode(KickMode.valueOf(value.toUpperCase(Locale.ROOT)));
-                return messageComponent("kickModeSet", Placeholder.unparsed("mode", kickModeName()));
+                return kick(sender, value);
             }
 
             case "allow" ->
@@ -190,6 +178,20 @@ public class NUSHCommand extends SimplePlexCommand
         }
         module.setTime(minutes);
         return messageComponent("waitTimeSet", Placeholder.unparsed("minutes", String.valueOf(minutes)));
+    }
+
+    private Component kick(CommandSender sender, String target)
+    {
+        String normalized = target.toLowerCase(Locale.ROOT);
+        if (!KICK_TARGETS.contains(normalized))
+        {
+            return messageComponent("kickTargetInvalid");
+        }
+        int kicked = module.quarantine().kick(normalized.equals("new"), messageComponent("kickMessage"));
+        Component result = messageComponent("playersKicked", Placeholder.unparsed("count", String.valueOf(kicked)),
+                Placeholder.unparsed("target", normalized), Placeholder.unparsed("admin", sender.getName()));
+        module.feed().alert(result);
+        return null;
     }
 
     private Component allow(CommandSender sender, String name)
@@ -281,8 +283,4 @@ public class NUSHCommand extends SimplePlexCommand
         return names;
     }
 
-    private String kickModeName()
-    {
-        return module.getKickMode().name().toLowerCase(Locale.ROOT);
-    }
 }

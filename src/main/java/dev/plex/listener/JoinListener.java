@@ -32,14 +32,15 @@ public class JoinListener implements Listener
         }
 
         Quarantine quarantine = module.quarantine();
-        if (!quarantine.consumePending(uuid))
+        Boolean firstJoin = quarantine.consumePending(uuid);
+        if (firstJoin == null)
         {
             return;
         }
 
         if (!quarantine.isRestricted(uuid))
         {
-            quarantine.restrict(player);
+            quarantine.restrict(player, firstJoin);
         }
         module.raidDetector().join();
         module.feed().alert(module.messageComponent("newPlayerMarked",

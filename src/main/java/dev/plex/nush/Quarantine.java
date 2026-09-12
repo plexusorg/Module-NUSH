@@ -1,6 +1,7 @@
 package dev.plex.nush;
 
 import dev.plex.NUSHModule;
+import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -14,7 +15,6 @@ import java.util.Collections;
 import java.util.Deque;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -40,7 +40,8 @@ public class Quarantine
     private final ScheduledExecutorService executor;
     private final int logSize;
     private final Map<UUID, Restriction> restrictions = new ConcurrentHashMap<>();
-    private final Set<UUID> pendingUnverified = ConcurrentHashMap.newKeySet();
+    // Value: whether the pending login is the player's first ever join.
+    private final Map<UUID, Boolean> pendingUnverified = new ConcurrentHashMap<>();
 
     public Quarantine(NUSHModule module, StaffFeed feed, ScheduledExecutorService executor, int logSize)
     {
@@ -50,10 +51,10 @@ public class Quarantine
         this.logSize = logSize;
     }
 
-    public void restrict(Player player)
+    public void restrict(Player player, boolean firstJoin)
     {
         UUID uuid = player.getUniqueId();
-        Restriction restriction = new Restriction(uuid, player.getName(), logSize);
+        Restriction restriction = new Restriction(uuid, player.getName(), firstJoin, logSize);
         // Start the timer before publishing the restriction so a concurrent verify always cancels a real task.
         restriction.expiry(executor.schedule(() -> verify(uuid, null), module.getTime(), TimeUnit.MINUTES));
         Restriction previous = restrictions.put(uuid, restriction);
@@ -97,7 +98,7 @@ public class Quarantine
         Player player = Bukkit.getPlayer(uuid);
         if (player != null)
         {
-            restrict(player);
+            restrict(player, false);
         }
     }
 
@@ -139,9 +140,9 @@ public class Quarantine
         }
     }
 
-    public void markPending(UUID uuid)
+    public void markPending(UUID uuid, boolean firstJoin)
     {
-        pendingUnverified.add(uuid);
+        pendingUnverified.put(uuid, firstJoin);
     }
 
     public void clearPending(UUID uuid)
@@ -149,9 +150,27 @@ public class Quarantine
         pendingUnverified.remove(uuid);
     }
 
-    public boolean consumePending(UUID uuid)
+    @Nullable
+    public Boolean consumePending(UUID uuid)
     {
         return pendingUnverified.remove(uuid);
+    }
+
+    // Kicks online restricted players: first-join accounts when firstJoin is true, reconnected ones otherwise.
+    public int kick(boolean firstJoin, Component message)
+    {
+        int kicked = 0;
+        for (Restriction restriction : restrictions.values())
+        {
+            Player player = Bukkit.getPlayer(restriction.uuid());
+            if (player == null || restriction.firstJoin() != firstJoin)
+            {
+                continue;
+            }
+            player.getScheduler().run(module.plugin(), task -> player.kick(message), null);
+            kicked++;
+        }
+        return kicked;
     }
 
     public void clear()
@@ -183,17 +202,24 @@ public class Quarantine
     {
         private final UUID uuid;
         private final String name;
+        private final boolean firstJoin;
         private final int logSize;
         private final Deque<LogEntry> log = new ArrayDeque<>();
         private volatile ScheduledFuture<?> expiry;
         private int messages;
         private int blockedCommands;
 
-        private Restriction(UUID uuid, String name, int logSize)
+        private Restriction(UUID uuid, String name, boolean firstJoin, int logSize)
         {
             this.uuid = uuid;
             this.name = name;
+            this.firstJoin = firstJoin;
             this.logSize = logSize;
+        }
+
+        public boolean firstJoin()
+        {
+            return firstJoin;
         }
 
         public UUID uuid()
