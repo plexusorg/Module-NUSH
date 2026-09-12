@@ -1,25 +1,24 @@
 package dev.plex;
 
-import dev.plex.command.NUSHCommand;
 import dev.plex.api.config.ModuleConfiguration;
+import dev.plex.command.NUSHCommand;
 import dev.plex.listener.ChatListener;
+import dev.plex.listener.CommandListener;
 import dev.plex.listener.JoinListener;
 import dev.plex.listener.LoginListener;
 import dev.plex.module.PlexModule;
+import dev.plex.nush.FaweHook;
+import dev.plex.nush.Quarantine;
+import dev.plex.nush.RaidDetector;
+import dev.plex.nush.StaffFeed;
 import net.milkbowl.vault.permission.Permission;
 import org.bukkit.Bukkit;
-import org.bukkit.entity.Player;
 import org.bukkit.plugin.RegisteredServiceProvider;
 
 import java.util.Locale;
-import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.atomic.AtomicReference;
 
 public class NUSHModule extends PlexModule
 {
@@ -29,11 +28,15 @@ public class NUSHModule extends PlexModule
     }
 
     private static final String BYPASS_PERMISSION = "plex.nush.bypass";
+    private static final String FAWE_PLUGIN = "FastAsyncWorldEdit";
 
     private ModuleConfiguration config;
-    private final Map<UUID, ScheduledFuture<?>> newPlayers = new ConcurrentHashMap<>();
-    private ScheduledExecutorService expiryExecutor;
     private Permission permissions;
+    private ScheduledExecutorService executor;
+    private Quarantine quarantine;
+    private StaffFeed feed;
+    private RaidDetector raidDetector;
+    private FaweHook faweHook;
     private volatile boolean enabled;
     private volatile int time;
     private volatile KickMode kickMode;
@@ -55,34 +58,66 @@ public class NUSHModule extends PlexModule
             throw new IllegalStateException("NUSH requires a Vault permission provider");
         }
         permissions = provider.getProvider();
-        expiryExecutor = Executors.newSingleThreadScheduledExecutor(
-                Thread.ofPlatform().daemon().name("Plex-NUSH-Expiry").factory());
+
         config.load();
         enabled = config.getBoolean("server.enabled", false);
-        time = config.getInt("server.wait_time", 2);
-        String configuredKickMode = config.getString("server.kick_mode", "off");
-        try
-        {
-            kickMode = KickMode.valueOf(configuredKickMode.toUpperCase(Locale.ROOT));
-        }
-        catch (IllegalArgumentException ex)
-        {
-            throw new IllegalStateException("Invalid server.kick_mode '" + configuredKickMode + "'; expected off, new or recent", ex);
-        }
+        time = requireAtLeastOne("server.wait_time", config.getInt("server.wait_time", 5));
+        kickMode = readKickMode();
+        int intervalSeconds = requireAtLeastOne("feed.interval_seconds", config.getInt("feed.interval_seconds", 10));
+        int digestThreshold = requireAtLeastOne("feed.digest_threshold", config.getInt("feed.digest_threshold", 5));
+        int logSize = requireAtLeastOne("log.size", config.getInt("log.size", 50));
+        int windowSeconds = requireAtLeastOne("raid.window_seconds", config.getInt("raid.window_seconds", 60));
+        int joinThreshold = requireAtLeastOne("raid.join_threshold", config.getInt("raid.join_threshold", 10));
+        int chatThreshold = requireAtLeastOne("raid.chat_threshold", config.getInt("raid.chat_threshold", 10));
+
+        executor = Executors.newSingleThreadScheduledExecutor(
+                Thread.ofPlatform().daemon().name("Plex-NUSH").factory());
+        feed = new StaffFeed(this, executor, intervalSeconds, digestThreshold);
+        quarantine = new Quarantine(this, feed, executor, logSize);
+        raidDetector = new RaidDetector(this, feed, windowSeconds, joinThreshold, chatThreshold);
+        feed.start();
+
         registerListener(new LoginListener(this));
         registerListener(new JoinListener(this));
         registerListener(new ChatListener(this));
+        registerListener(new CommandListener(this));
+
+        if (Bukkit.getPluginManager().isPluginEnabled(FAWE_PLUGIN))
+        {
+            faweHook = new FaweHook(this);
+            faweHook.register();
+        }
+        else
+        {
+            getLogger().warn("FastAsyncWorldEdit is not enabled; restricted players keep editing the world");
+        }
     }
 
     @Override
     public void disable()
     {
-        if (expiryExecutor != null)
+        if (faweHook != null)
         {
-            expiryExecutor.shutdownNow();
-            expiryExecutor = null;
+            faweHook.unregister();
+            faweHook = null;
         }
-        clearNewPlayers();
+        if (executor != null)
+        {
+            executor.shutdownNow();
+            executor = null;
+        }
+        if (quarantine != null)
+        {
+            quarantine.clear();
+        }
+        if (feed != null)
+        {
+            feed.clear();
+        }
+        if (raidDetector != null)
+        {
+            raidDetector.clear();
+        }
     }
 
     public boolean isEnabled()
@@ -98,6 +133,21 @@ public class NUSHModule extends PlexModule
     public KickMode getKickMode()
     {
         return kickMode;
+    }
+
+    public Quarantine quarantine()
+    {
+        return quarantine;
+    }
+
+    public StaffFeed feed()
+    {
+        return feed;
+    }
+
+    public RaidDetector raidDetector()
+    {
+        return raidDetector;
     }
 
     public void toggle(boolean toggle)
@@ -126,37 +176,28 @@ public class NUSHModule extends PlexModule
         return permissions.playerHas((String) null, Bukkit.getOfflinePlayer(uuid), BYPASS_PERMISSION);
     }
 
-    public void queueNewPlayer(Player player)
+    private KickMode readKickMode()
     {
-        UUID uuid = player.getUniqueId();
-        AtomicReference<ScheduledFuture<?>> taskReference = new AtomicReference<>();
-        ScheduledFuture<?> task = expiryExecutor.schedule(
-                () -> newPlayers.remove(uuid, taskReference.get()), time, TimeUnit.MINUTES);
-        taskReference.set(task);
-        ScheduledFuture<?> previous = newPlayers.put(uuid, task);
-        if (previous != null)
+        // YAML parses a bare "off" as the boolean false, so accept that spelling as the off mode.
+        Object raw = config.get("server.kick_mode");
+        String configured = raw == null ? "off" : Boolean.FALSE.equals(raw) ? "off" : raw.toString();
+        try
         {
-            previous.cancel(false);
+            return KickMode.valueOf(configured.toUpperCase(Locale.ROOT));
+        }
+        catch (IllegalArgumentException ex)
+        {
+            getLogger().warn("Invalid server.kick_mode '{}'; expected off, new or recent. Using off", configured);
+            return KickMode.OFF;
         }
     }
 
-    public boolean isNewPlayer(UUID uuid)
+    private int requireAtLeastOne(String key, int value)
     {
-        return newPlayers.containsKey(uuid);
-    }
-
-    public void removePlayer(Player player)
-    {
-        ScheduledFuture<?> task = newPlayers.remove(player.getUniqueId());
-        if (task != null)
+        if (value < 1)
         {
-            task.cancel(false);
+            throw new IllegalStateException("Invalid " + key + " '" + value + "'; the value must be at least 1");
         }
-    }
-
-    public void clearNewPlayers()
-    {
-        newPlayers.values().forEach(task -> task.cancel(false));
-        newPlayers.clear();
+        return value;
     }
 }

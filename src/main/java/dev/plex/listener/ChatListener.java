@@ -1,14 +1,18 @@
 package dev.plex.listener;
 
 import dev.plex.NUSHModule;
+import dev.plex.nush.Quarantine.Kind;
+import dev.plex.nush.Quarantine.LogEntry;
 import io.papermc.paper.event.player.AsyncChatEvent;
-import io.papermc.paper.chat.ChatRenderer;
-import net.kyori.adventure.audience.Audience;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+
+import java.time.Instant;
+import java.util.UUID;
 
 public class ChatListener implements Listener
 {
@@ -19,28 +23,24 @@ public class ChatListener implements Listener
         this.module = module;
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST)
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onChat(AsyncChatEvent event)
     {
-        final Player player = event.getPlayer();
-
-        if (!module.isEnabled() || event.isCancelled() || !module.isNewPlayer(player.getUniqueId()))
+        Player player = event.getPlayer();
+        UUID uuid = player.getUniqueId();
+        if (!module.isEnabled() || !module.quarantine().isRestricted(uuid))
         {
-            module.api().logging().debug("NUSH is disabled, event is cancelled or {0} is not on the list", player.getName());
             return;
         }
 
-        module.api().logging().debug("Handling event for player {0}", player.getName());
-        ChatRenderer renderer = event.renderer();
-        event.viewers().removeIf(viewer -> !(viewer instanceof Player recipient)
-                || (!recipient.equals(player) && !recipient.hasPermission("plex.nush.view")));
-        event.viewers().add(player);
-        event.renderer((source, displayName, message, viewer) -> render(renderer, source, displayName, message, viewer));
-    }
+        // Cancelling stops every MONITOR consumer, such as DiscordSRV, from reading the raw message.
+        event.setCancelled(true);
+        Component rendered = event.renderer().render(player, player.displayName(), event.message(), player);
+        player.sendMessage(rendered);
 
-    private Component render(ChatRenderer renderer, Player source, Component displayName, Component message, Audience viewer)
-    {
-        Component rendered = renderer.render(source, displayName, message, viewer);
-        return source.equals(viewer) ? rendered : module.messageComponent("newPlayerChatPrefix").append(rendered);
+        String text = PlainTextComponentSerializer.plainText().serialize(event.message());
+        module.quarantine().record(uuid, new LogEntry(Kind.CHAT, Instant.now(), text));
+        module.raidDetector().chat(uuid);
+        module.feed().line(player, Kind.CHAT, rendered, text);
     }
 }

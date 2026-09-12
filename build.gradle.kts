@@ -28,6 +28,7 @@ dependencies {
     compileOnly("com.github.MilkBowl:VaultAPI:1.7.1") {
         exclude("org.bukkit", "bukkit")
     }
+    compileOnly("com.fastasyncworldedit:FastAsyncWorldEdit-Core:2.13.0")
 }
 
 group = "dev.plex"

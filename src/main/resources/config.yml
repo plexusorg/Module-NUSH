@@ -4,12 +4,35 @@ server:
   # Should NUSH be enabled or disabled - this is also toggleable via the /nush command
   enabled: false
 
-  # How many minutes before a new player can chat with other players
+  # How many minutes a new player stays restricted - this is also settable via /nush time
+  # The minimum is 1 minute.
   wait_time: 5
 
   # Deny logins while NUSH is enabled - this is also toggleable via /nush kick
   #   off: nobody is denied
-  #   new: players who join for the first time are denied
-  #   recent: first-time players are denied, and so are players who joined during the wait_time window and reconnect
+  #   new: unverified players who join for the first time are denied
+  #   recent: every unverified player is denied
   # Players with the permission plex.nush.bypass are never denied.
-  kick_mode: off
+  kick_mode: "off"
+
+feed:
+  # How many seconds one staff feed interval lasts
+  interval_seconds: 10
+
+  # How many different restricted players must speak in one interval before NUSH
+  # stops showing single lines and sends one digest instead
+  digest_threshold: 5
+
+log:
+  # How many log entries NUSH keeps for each restricted player - see /nush log
+  size: 50
+
+raid:
+  # How many seconds the raid detection windows cover
+  window_seconds: 60
+
+  # How many unverified joins in the window trigger a raid alert
+  join_threshold: 10
+
+  # How many different restricted players chatting in the window trigger a raid alert
+  chat_threshold: 10
