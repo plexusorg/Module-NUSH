@@ -24,7 +24,7 @@ public class ChatListener implements Listener
     {
         final Player player = event.getPlayer();
 
-        if (!module.isEnabled() || event.isCancelled() || !module.isNewPlayer(player))
+        if (!module.isEnabled() || event.isCancelled() || !module.isNewPlayer(player.getUniqueId()))
         {
             module.api().logging().debug("NUSH is disabled, event is cancelled or {0} is not on the list", player.getName());
             return;

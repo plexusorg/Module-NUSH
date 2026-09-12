@@ -13,6 +13,10 @@ repositories {
         url = uri("https://nexus.telesphoreo.me/repository/plex/")
     }
 
+    maven {
+        url = uri("https://jitpack.io")
+    }
+
     mavenCentral()
 }
 
@@ -21,6 +25,9 @@ dependencies {
     annotationProcessor("org.projectlombok:lombok:1.18.46")
     compileOnly("io.papermc.paper:paper-api:26.2.build.+")
     compileOnly("dev.plex:api:2.0-SNAPSHOT")
+    compileOnly("com.github.MilkBowl:VaultAPI:1.7.1") {
+        exclude("org.bukkit", "bukkit")
+    }
 }
 
 group = "dev.plex"

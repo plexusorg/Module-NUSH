@@ -6,3 +6,10 @@ server:
 
   # How many minutes before a new player can chat with other players
   wait_time: 5
+
+  # Deny logins while NUSH is enabled - this is also toggleable via /nush kick
+  #   off: nobody is denied
+  #   new: players who join for the first time are denied
+  #   recent: first-time players are denied, and so are players who joined during the wait_time window and reconnect
+  # Players with the permission plex.nush.bypass are never denied.
+  kick_mode: off
