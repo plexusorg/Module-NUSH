@@ -17,6 +17,10 @@ repositories {
         url = uri("https://jitpack.io")
     }
 
+    maven {
+        url = uri("https://maven.enginehub.org/repo/")
+    }
+
     mavenCentral()
 }
 
@@ -28,7 +32,8 @@ dependencies {
     compileOnly("com.github.MilkBowl:VaultAPI:1.7.1") {
         exclude("org.bukkit", "bukkit")
     }
-    compileOnly("com.fastasyncworldedit:FastAsyncWorldEdit-Core:2.13.0")
+    compileOnly(platform("com.intellectualsites.bom:bom-newest:1.56"))
+    compileOnly("com.fastasyncworldedit:FastAsyncWorldEdit-Core")
 }
 
 group = "dev.plex"
