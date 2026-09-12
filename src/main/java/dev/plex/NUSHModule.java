@@ -62,12 +62,12 @@ public class NUSHModule extends PlexModule
         feed = new StaffFeed(this, executor, intervalSeconds, digestThreshold);
         quarantine = new Quarantine(this, feed, executor, logSize);
         raidDetector = new RaidDetector(this, feed, windowSeconds, joinThreshold, chatThreshold);
-        feed.start();
 
         registerListener(new LoginListener(this));
         registerListener(new JoinListener(this));
         registerListener(new ChatListener(this));
         registerListener(new CommandListener(this));
+        feed.start();
 
         if (Bukkit.getPluginManager().isPluginEnabled(FAWE_PLUGIN))
         {

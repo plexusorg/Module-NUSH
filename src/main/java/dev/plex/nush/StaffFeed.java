@@ -49,6 +49,22 @@ public class StaffFeed
 
     public void start()
     {
+        // Use Plex's session snapshot, not Bukkit's live online-player collection.
+        for (String name : module.api().players().onlineNames())
+        {
+            Player player = Bukkit.getPlayerExact(name);
+            if (player != null)
+            {
+                // Initialize membership on the session owner so a concurrent quit cannot leave a stale recipient.
+                module.ownTask(player.getScheduler().run(module.plugin(), task ->
+                {
+                    if (player.hasPermission(VIEW_PERMISSION))
+                    {
+                        addStaff(player.getUniqueId());
+                    }
+                }, null));
+            }
+        }
         executor.scheduleAtFixedRate(this::tick, intervalSeconds, intervalSeconds, TimeUnit.SECONDS);
     }
 
