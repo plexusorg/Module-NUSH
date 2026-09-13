@@ -71,7 +71,7 @@ public class Quarantine
         {
             return;
         }
-        Session session = new Session(player.getUniqueId(), player.getName(), !player.hasPlayedBefore(),
+        Session session = new Session(player.getUniqueId(), player.getName(),
                 joinedAt, player.hasPermission("plex.nush.bypass"), !existingSession && consumePending(player.getUniqueId()));
         session.trustLoaded = !existingSession;
         session.admissionRequired = active && session.joinedAt >= System.currentTimeMillis() - recentJoinMillis;
@@ -144,7 +144,7 @@ public class Quarantine
         Restriction restriction = restrictions.get(session.uuid);
         if (restriction == null)
         {
-            restriction = new Restriction(session.uuid, session.name, session.firstJoin, logSize);
+            restriction = new Restriction(session.uuid, session.name, logSize);
             restriction.remainingNanos = TimeUnit.MINUTES.toNanos(module.getTime());
             restrictions.put(session.uuid, restriction);
             feed.alert(module.messageComponent("newPlayerMarked", Placeholder.unparsed("player", session.name),
@@ -402,14 +402,13 @@ public class Quarantine
         return pending != null && pending.trusted();
     }
 
-    // Kicks online restricted players: first-join accounts when firstJoin is true, reconnected ones otherwise.
-    public int kick(boolean firstJoin, Component message)
+    public int kick(Component message)
     {
         int kicked = 0;
         for (Restriction restriction : restrictions.values())
         {
             Player player = Bukkit.getPlayer(restriction.uuid());
-            if (player == null || restriction.firstJoin() != firstJoin)
+            if (player == null)
             {
                 continue;
             }
@@ -456,7 +455,6 @@ public class Quarantine
     {
         private final UUID uuid;
         private final String name;
-        private final boolean firstJoin;
         private final long joinedAt;
         private final boolean bypass;
         private boolean trusted;
@@ -464,11 +462,10 @@ public class Quarantine
         private boolean trustLoaded;
         private boolean admissionRequired;
 
-        private Session(UUID uuid, String name, boolean firstJoin, long joinedAt, boolean bypass, boolean trusted)
+        private Session(UUID uuid, String name, long joinedAt, boolean bypass, boolean trusted)
         {
             this.uuid = uuid;
             this.name = name;
-            this.firstJoin = firstJoin;
             this.joinedAt = joinedAt;
             this.bypass = bypass;
             this.trusted = trusted;
@@ -490,7 +487,6 @@ public class Quarantine
     {
         private final UUID uuid;
         private final String name;
-        private final boolean firstJoin;
         private final int logSize;
         private final Deque<LogEntry> log = new ArrayDeque<>();
         private volatile ScheduledFuture<?> expiry;
@@ -500,17 +496,11 @@ public class Quarantine
         private int messages;
         private int blockedCommands;
 
-        private Restriction(UUID uuid, String name, boolean firstJoin, int logSize)
+        private Restriction(UUID uuid, String name, int logSize)
         {
             this.uuid = uuid;
             this.name = name;
-            this.firstJoin = firstJoin;
             this.logSize = logSize;
-        }
-
-        public boolean firstJoin()
-        {
-            return firstJoin;
         }
 
         public UUID uuid()

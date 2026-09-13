@@ -27,7 +27,6 @@ public class NUSHCommand extends SimplePlexCommand
 {
     private static final List<String> ACTIONS = List.of("on", "off", "status", "time", "kick", "allow", "revoke",
             "list", "log", "feed");
-    private static final List<String> KICK_TARGETS = List.of("new", "recent");
     private static final String ALLOW_PERMISSION = "plex.nush.allow";
 
     private final NUSHModule module;
@@ -36,7 +35,7 @@ public class NUSHCommand extends SimplePlexCommand
     {
         super(command("nush")
                 .description("The main command to manage the NUSH module")
-                .usage("/<command> <on | off | status | time <minutes> | kick <new | recent> "
+                .usage("/<command> <on | off | status | time <minutes> | kick "
                         + "| allow <player> | revoke <player> | list | log <player> | feed>")
                 .permission("plex.nush.use")
                 .build());
@@ -62,10 +61,6 @@ public class NUSHCommand extends SimplePlexCommand
     private CompletableFuture<Suggestions> suggestValues(SuggestionsBuilder builder, String action)
     {
         String normalized = action.toLowerCase(Locale.ROOT);
-        if (normalized.equals("kick"))
-        {
-            return suggestMatching(builder, KICK_TARGETS);
-        }
         if (normalized.equals("allow"))
         {
             Set<String> names = new LinkedHashSet<>(onlinePlayerNames());
@@ -108,6 +103,11 @@ public class NUSHCommand extends SimplePlexCommand
                             Placeholder.unparsed("restricted", String.valueOf(module.quarantine().entries().size())));
                 }
 
+                case "kick" ->
+                {
+                    return kick(sender);
+                }
+
                 case "list" ->
                 {
                     return list(sender);
@@ -130,11 +130,6 @@ public class NUSHCommand extends SimplePlexCommand
             case "time" ->
             {
                 return setTime(value);
-            }
-
-            case "kick" ->
-            {
-                return kick(sender, value);
             }
 
             case "allow" ->
@@ -179,16 +174,11 @@ public class NUSHCommand extends SimplePlexCommand
         return messageComponent("waitTimeSet", Placeholder.unparsed("minutes", String.valueOf(minutes)));
     }
 
-    private Component kick(CommandSender sender, String target)
+    private Component kick(CommandSender sender)
     {
-        String normalized = target.toLowerCase(Locale.ROOT);
-        if (!KICK_TARGETS.contains(normalized))
-        {
-            return messageComponent("kickTargetInvalid");
-        }
-        int kicked = module.quarantine().kick(normalized.equals("new"), messageComponent("kickMessage"));
+        int kicked = module.quarantine().kick(messageComponent("kickMessage"));
         Component result = messageComponent("playersKicked", Placeholder.unparsed("count", String.valueOf(kicked)),
-                Placeholder.unparsed("target", normalized), Placeholder.unparsed("admin", sender.getName()));
+                Placeholder.unparsed("admin", sender.getName()));
         module.feed().alert(result);
         return null;
     }
