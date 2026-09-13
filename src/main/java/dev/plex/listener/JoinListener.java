@@ -37,6 +37,7 @@ public class JoinListener implements Listener
         Boolean firstJoin = quarantine.consumePending(uuid);
         if (firstJoin == null)
         {
+            quarantine.resume(uuid);
             return;
         }
 
@@ -44,6 +45,7 @@ public class JoinListener implements Listener
         {
             quarantine.restrict(player, firstJoin);
         }
+        quarantine.resume(uuid);
         module.raidDetector().join();
         module.feed().alert(module.messageComponent("newPlayerMarked",
                 Placeholder.unparsed("player", player.getName()),
@@ -68,6 +70,7 @@ public class JoinListener implements Listener
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onQuit(PlayerQuitEvent event)
     {
+        module.quarantine().pause(event.getPlayer().getUniqueId());
         module.feed().removeStaff(event.getPlayer().getUniqueId());
         if (!module.isEnabled() || !module.quarantine().isRestricted(event.getPlayer().getUniqueId()))
         {

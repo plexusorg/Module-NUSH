@@ -51,20 +51,51 @@ public class Quarantine
         this.logSize = logSize;
     }
 
-    public void restrict(Player player, boolean firstJoin)
+    public synchronized void restrict(Player player, boolean firstJoin)
     {
         UUID uuid = player.getUniqueId();
         Restriction restriction = new Restriction(uuid, player.getName(), firstJoin, logSize);
-        // Start the timer before publishing the restriction so a concurrent verify always cancels a real task.
-        restriction.expiry(executor.schedule(() -> verify(uuid, null), module.getTime(), TimeUnit.MINUTES));
+        restriction.remainingNanos = TimeUnit.MINUTES.toNanos(module.getTime());
         Restriction previous = restrictions.put(uuid, restriction);
         if (previous != null)
         {
             previous.cancelExpiry();
         }
+        resume(uuid);
     }
 
-    public CompletableFuture<Void> verify(UUID uuid, @Nullable String byName)
+    public synchronized void pause(UUID uuid)
+    {
+        Restriction restriction = restrictions.get(uuid);
+        if (restriction != null && restriction.expiry != null)
+        {
+            restriction.remainingNanos = Math.max(0, restriction.expiry.getDelay(TimeUnit.NANOSECONDS));
+            restriction.cancelExpiry();
+        }
+    }
+
+    public synchronized void resume(UUID uuid)
+    {
+        Restriction restriction = restrictions.get(uuid);
+        if (restriction == null || restriction.expiry != null)
+        {
+            return;
+        }
+        long generation = ++restriction.timerGeneration;
+        restriction.expiry = executor.schedule(() -> expire(restriction, generation),
+                restriction.remainingNanos, TimeUnit.NANOSECONDS);
+    }
+
+    private synchronized void expire(Restriction restriction, long generation)
+    {
+        // Cancellation alone cannot stop a callback that has already started.
+        if (restrictions.get(restriction.uuid()) == restriction && restriction.timerGeneration == generation)
+        {
+            verify(restriction.uuid(), null);
+        }
+    }
+
+    public synchronized CompletableFuture<Void> verify(UUID uuid, @Nullable String byName)
     {
         Restriction restriction = restrictions.remove(uuid);
         if (restriction != null)
@@ -173,7 +204,7 @@ public class Quarantine
         return kicked;
     }
 
-    public void clear()
+    public synchronized void clear()
     {
         restrictions.values().forEach(Restriction::cancelExpiry);
         restrictions.clear();
@@ -206,6 +237,9 @@ public class Quarantine
         private final int logSize;
         private final Deque<LogEntry> log = new ArrayDeque<>();
         private volatile ScheduledFuture<?> expiry;
+        private volatile long remainingNanos;
+        // Access timer generations under the quarantine owner's monitor.
+        private long timerGeneration;
         private int messages;
         private int blockedCommands;
 
@@ -235,7 +269,8 @@ public class Quarantine
         public long remainingSeconds()
         {
             ScheduledFuture<?> task = expiry;
-            return task == null ? 0 : Math.max(0, task.getDelay(TimeUnit.SECONDS));
+            long nanos = task == null ? remainingNanos : Math.max(0, task.getDelay(TimeUnit.NANOSECONDS));
+            return TimeUnit.NANOSECONDS.toSeconds(nanos);
         }
 
         public List<LogEntry> log()
@@ -282,18 +317,15 @@ public class Quarantine
             }
         }
 
-        private void expiry(ScheduledFuture<?> task)
-        {
-            expiry = task;
-        }
-
         private void cancelExpiry()
         {
+            timerGeneration++;
             ScheduledFuture<?> task = expiry;
             if (task != null)
             {
                 task.cancel(false);
             }
+            expiry = null;
         }
     }
 }
