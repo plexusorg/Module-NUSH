@@ -205,9 +205,15 @@ public class NUSHCommand extends SimplePlexCommand
 
         String admin = sender.getName();
         module.quarantine().verify(restriction.uuid(), admin)
-                .whenComplete((ignored, failure) -> sender.sendMessage(messageComponent("playerAllowed",
-                        Placeholder.unparsed("player", restriction.name()),
-                        Placeholder.unparsed("admin", admin))));
+                .whenComplete((ignored, failure) ->
+                {
+                    if (!module.feed().receivesAlerts(sender))
+                    {
+                        sender.sendMessage(messageComponent("playerAllowed",
+                                Placeholder.unparsed("player", restriction.name()),
+                                Placeholder.unparsed("admin", admin)));
+                    }
+                });
         return null;
     }
 
@@ -219,7 +225,7 @@ public class NUSHCommand extends SimplePlexCommand
         Component revoked = messageComponent("playerRevoked", Placeholder.unparsed("player", target.getName()),
                 Placeholder.unparsed("admin", sender.getName()));
         module.feed().alert(revoked);
-        return revoked;
+        return module.feed().receivesAlerts(sender) ? null : revoked;
     }
 
     private Component list(CommandSender sender)

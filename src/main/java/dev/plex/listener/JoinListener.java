@@ -3,9 +3,11 @@ package dev.plex.listener;
 import dev.plex.NUSHModule;
 import dev.plex.nush.Quarantine;
 import dev.plex.nush.StaffFeed;
+import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
@@ -48,9 +50,34 @@ public class JoinListener implements Listener
                 Placeholder.unparsed("minutes", String.valueOf(module.getTime()))));
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onJoinMessage(PlayerJoinEvent event)
+    {
+        if (!module.isEnabled() || !module.quarantine().isRestricted(event.getPlayer().getUniqueId()))
+        {
+            return;
+        }
+        Component message = event.joinMessage();
+        event.joinMessage(null);
+        if (message != null)
+        {
+            module.feed().alert(message);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
     public void onQuit(PlayerQuitEvent event)
     {
         module.feed().removeStaff(event.getPlayer().getUniqueId());
+        if (!module.isEnabled() || !module.quarantine().isRestricted(event.getPlayer().getUniqueId()))
+        {
+            return;
+        }
+        Component message = event.quitMessage();
+        event.quitMessage(null);
+        if (message != null)
+        {
+            module.feed().alert(message);
+        }
     }
 }

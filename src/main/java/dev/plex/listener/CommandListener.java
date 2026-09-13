@@ -51,18 +51,36 @@ public class CommandListener implements Listener
             command = Bukkit.getCommandMap().getCommand(baseLabel);
         }
 
+        boolean blockedOnMute = isBlockedOnMute(label, baseLabel, command);
         // A leading slash survives the strip above only for WorldEdit's double slash commands.
-        if (!label.startsWith("/") && !isWorldEditCommand(command))
+        if (!blockedOnMute && !label.startsWith("/") && !isWorldEditCommand(command))
         {
             return;
         }
 
-        if (!module.shadowActive() || BYPASS_COMMANDS.contains(baseLabel.replaceFirst("^/", "")))
+        if (blockedOnMute || !module.shadowActive() || BYPASS_COMMANDS.contains(baseLabel.replaceFirst("^/", "")))
         {
             event.setCancelled(true);
         }
         module.quarantine().record(uuid, new LogEntry(Kind.COMMAND, Instant.now(), message));
         module.feed().line(player, Kind.COMMAND, Component.text(player.getName() + ": " + message), message);
+    }
+
+    private boolean isBlockedOnMute(String label, String baseLabel, Command command)
+    {
+        for (String blocked : module.api().configuration().mainConfig().getStringList("block_on_mute"))
+        {
+            if (blocked.equalsIgnoreCase(label) || blocked.equalsIgnoreCase(baseLabel))
+            {
+                return true;
+            }
+            Command configured = Bukkit.getCommandMap().getCommand(blocked);
+            if (command != null && command.equals(configured))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     private boolean isWorldEditCommand(Command command)

@@ -5,6 +5,7 @@ import dev.plex.nush.Quarantine.Kind;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import org.bukkit.Bukkit;
+import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 
 import java.time.Duration;
@@ -92,6 +93,12 @@ public class StaffFeed
     public void alert(Component component)
     {
         send(component, false);
+    }
+
+    public boolean receivesAlerts(CommandSender sender)
+    {
+        return sender.equals(Bukkit.getConsoleSender())
+                || sender instanceof Player player && audience.contains(player.getUniqueId());
     }
 
     public void line(Player source, Kind kind, Component rendered, String plainText)
