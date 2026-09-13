@@ -13,10 +13,15 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Deque;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -33,39 +38,125 @@ public class Quarantine
     {
     }
 
-    private static final String VERIFIED_KEY = "verified";
+    private static final String TRUSTED_KEY = "staff_trusted";
+    private static final int TRUST_CACHE_LIMIT = 4096;
+    private static final long TRUST_CACHE_NANOS = TimeUnit.SECONDS.toNanos(30);
 
     private final NUSHModule module;
     private final StaffFeed feed;
     private final ScheduledExecutorService executor;
     private final int logSize;
     private final Map<UUID, Restriction> restrictions = new ConcurrentHashMap<>();
-    // Value: whether the pending login is the player's first ever join.
-    private final Map<UUID, Boolean> pendingUnverified = new ConcurrentHashMap<>();
+    private final Map<UUID, Session> sessions = new ConcurrentHashMap<>();
+    private final Map<UUID, PendingTrust> pendingTrust = new ConcurrentHashMap<>();
+    // Share positive, negative, and in-flight reads across login threads. Local writes update cached decisions.
+    private final Map<UUID, TrustRead> trustReads = new LinkedHashMap<>();
+    private final Set<UUID> trustUpdates = new HashSet<>();
+    private final long recentJoinMillis;
+    private boolean active;
+    private boolean closed;
 
-    public Quarantine(NUSHModule module, StaffFeed feed, ScheduledExecutorService executor, int logSize)
+    public Quarantine(NUSHModule module, StaffFeed feed, ScheduledExecutorService executor, int logSize, int recentJoinMinutes)
     {
         this.module = module;
         this.feed = feed;
         this.executor = executor;
         this.logSize = logSize;
+        this.recentJoinMillis = TimeUnit.MINUTES.toMillis(recentJoinMinutes);
     }
 
-    public synchronized void restrict(Player player, boolean firstJoin)
+    public synchronized void joined(Player player, long joinedAt, boolean existingSession)
     {
-        UUID uuid = player.getUniqueId();
-        Restriction restriction = new Restriction(uuid, player.getName(), firstJoin, logSize);
-        restriction.remainingNanos = TimeUnit.MINUTES.toNanos(module.getTime());
-        Restriction previous = restrictions.put(uuid, restriction);
-        if (previous != null)
+        if (closed || sessions.containsKey(player.getUniqueId()))
         {
-            previous.cancelExpiry();
+            return;
         }
-        resume(uuid);
+        Session session = new Session(player.getUniqueId(), player.getName(), !player.hasPlayedBefore(),
+                joinedAt, player.hasPermission("plex.nush.bypass"), !existingSession && consumePending(player.getUniqueId()));
+        session.trustLoaded = !existingSession;
+        session.admissionRequired = active && session.joinedAt >= System.currentTimeMillis() - recentJoinMillis;
+        sessions.put(session.uuid, session);
+        if (restrictions.containsKey(session.uuid))
+        {
+            resume(session.uuid);
+            return;
+        }
+        if (session.admissionRequired && session.trustLoaded && !session.exempt())
+        {
+            restrict(session);
+        }
+    }
+
+    public synchronized void loadSessionTrust(UUID uuid)
+    {
+        Session session = sessions.get(uuid);
+        if (closed || session == null || session.trustLoaded)
+        {
+            return;
+        }
+        readTrust(uuid).whenComplete((trusted, failure) ->
+        {
+            synchronized (this)
+            {
+                if (failure != null)
+                {
+                    module.getLogger().error("Unable to read the NUSH staff trust of {}", uuid, failure);
+                }
+                if (!closed && sessions.get(uuid) == session && !session.trustLoaded && session.trustRevision == 0)
+                {
+                    session.trusted = failure == null && trusted;
+                    session.trustLoaded = true;
+                    if (session.admissionRequired && !session.exempt())
+                    {
+                        restrict(session);
+                    }
+                }
+            }
+        });
+    }
+
+    public synchronized void toggle(boolean enabled)
+    {
+        if (closed || active && enabled)
+        {
+            return;
+        }
+        active = enabled;
+        if (!enabled)
+        {
+            clearRestrictions();
+            sessions.values().forEach(session -> session.admissionRequired = false);
+            return;
+        }
+        long cutoff = System.currentTimeMillis() - recentJoinMillis;
+        for (Session session : sessions.values())
+        {
+            session.admissionRequired = session.joinedAt >= cutoff;
+            if (session.admissionRequired && session.trustLoaded && !session.exempt())
+            {
+                restrict(session);
+            }
+        }
+    }
+
+    private void restrict(Session session)
+    {
+        Restriction restriction = restrictions.get(session.uuid);
+        if (restriction == null)
+        {
+            restriction = new Restriction(session.uuid, session.name, session.firstJoin, logSize);
+            restriction.remainingNanos = TimeUnit.MINUTES.toNanos(module.getTime());
+            restrictions.put(session.uuid, restriction);
+            feed.alert(module.messageComponent("newPlayerMarked", Placeholder.unparsed("player", session.name),
+                    Placeholder.unparsed("minutes", String.valueOf(module.getTime()))));
+        }
+        resume(session.uuid);
     }
 
     public synchronized void pause(UUID uuid)
     {
+        sessions.remove(uuid);
+        pendingTrust.remove(uuid);
         Restriction restriction = restrictions.get(uuid);
         if (restriction != null && restriction.expiry != null)
         {
@@ -91,46 +182,145 @@ public class Quarantine
         // Cancellation alone cannot stop a callback that has already started.
         if (restrictions.get(restriction.uuid()) == restriction && restriction.timerGeneration == generation)
         {
-            verify(restriction.uuid(), null);
+            release(restriction.uuid());
+            feed.alert(module.messageComponent("quarantineExpired", Placeholder.unparsed("player", restriction.name())));
         }
     }
 
-    public synchronized CompletableFuture<Void> verify(UUID uuid, @Nullable String byName)
+    public synchronized CompletableFuture<Void> verify(UUID uuid, String byName)
+    {
+        if (closed || !trustUpdates.add(uuid))
+        {
+            return CompletableFuture.failedFuture(new IllegalStateException("NUSH is closed or a trust update is already in progress"));
+        }
+        return module.api().players().moduleData(module, uuid).set(TRUSTED_KEY, true).thenRun(() ->
+        {
+            synchronized (this)
+            {
+                if (closed)
+                {
+                    throw new IllegalStateException("NUSH was unloaded during the trust update");
+                }
+                Session session = sessions.get(uuid);
+                if (session != null)
+                {
+                    session.trusted = true;
+                    session.trustRevision++;
+                    session.trustLoaded = true;
+                }
+                TrustRead cached = trustReads.get(uuid);
+                if (cached != null)
+                {
+                    cached.updated = true;
+                }
+                pendingTrust.computeIfPresent(uuid, (key, pending) -> new PendingTrust(true, pending.time()));
+                String name = restrictions.containsKey(uuid) ? restrictions.get(uuid).name() : nameOf(uuid);
+                release(uuid);
+                feed.alert(module.messageComponent("playerAllowed", Placeholder.unparsed("player", name),
+                        Placeholder.unparsed("admin", byName)));
+            }
+        }).whenComplete((ignored, failure) ->
+        {
+            synchronized (this)
+            {
+                trustUpdates.remove(uuid);
+            }
+        });
+    }
+
+    public synchronized CompletableFuture<Void> revoke(UUID uuid)
+    {
+        if (closed || !trustUpdates.add(uuid))
+        {
+            return CompletableFuture.failedFuture(new IllegalStateException("NUSH is closed or a trust update is already in progress"));
+        }
+        return module.api().players().moduleData(module, uuid).remove(TRUSTED_KEY).thenRun(() ->
+        {
+            synchronized (this)
+            {
+                if (closed)
+                {
+                    throw new IllegalStateException("NUSH was unloaded during the trust update");
+                }
+                TrustRead cached = trustReads.get(uuid);
+                if (cached != null)
+                {
+                    cached.updated = false;
+                }
+                pendingTrust.computeIfPresent(uuid, (key, pending) -> new PendingTrust(false, pending.time()));
+                Session session = sessions.get(uuid);
+                if (session != null)
+                {
+                    session.trusted = false;
+                    session.trustRevision++;
+                    session.trustLoaded = true;
+                    release(uuid);
+                    restrict(session);
+                }
+            }
+        }).whenComplete((ignored, failure) ->
+        {
+            synchronized (this)
+            {
+                trustUpdates.remove(uuid);
+            }
+        });
+    }
+
+    private void release(UUID uuid)
     {
         Restriction restriction = restrictions.remove(uuid);
         if (restriction != null)
         {
             restriction.cancelExpiry();
         }
-        pendingUnverified.remove(uuid);
-        String name = restriction == null ? nameOf(uuid) : restriction.name();
-        return write(uuid).whenComplete((ignored, failure) -> feed.alert(byName == null
-                ? module.messageComponent("quarantineExpired", Placeholder.unparsed("player", name))
-                : module.messageComponent("playerAllowed", Placeholder.unparsed("player", name),
-                        Placeholder.unparsed("admin", byName))));
     }
 
-    // Used by the grandfather rule at pre-login, which stores the flag without releasing a restriction.
-    public void markVerified(UUID uuid)
+    private synchronized CompletableFuture<Boolean> readTrust(UUID uuid)
     {
-        write(uuid);
-    }
-
-    public void revoke(UUID uuid)
-    {
-        module.api().players().moduleData(module, uuid).remove(VERIFIED_KEY)
-                .whenComplete((ignored, failure) ->
-                {
-                    if (failure != null)
-                    {
-                        module.getLogger().error("Unable to remove the NUSH verification of {}", uuid, failure);
-                    }
-                });
-        Player player = Bukkit.getPlayer(uuid);
-        if (player != null)
+        if (closed)
         {
-            restrict(player, false);
+            return CompletableFuture.failedFuture(new IllegalStateException("NUSH is closed"));
         }
+        long now = System.nanoTime();
+        TrustRead cached = trustReads.get(uuid);
+        if (cached != null)
+        {
+            if (!cached.future.isDone() || now - cached.started < TRUST_CACHE_NANOS)
+            {
+                return cached.updated == null ? cached.future : CompletableFuture.completedFuture(cached.updated);
+            }
+            trustReads.remove(uuid);
+        }
+        if (trustReads.size() >= TRUST_CACHE_LIMIT)
+        {
+            Iterator<TrustRead> entries = trustReads.values().iterator();
+            while (entries.hasNext())
+            {
+                if (entries.next().future.isDone())
+                {
+                    entries.remove();
+                    break;
+                }
+            }
+            if (trustReads.size() >= TRUST_CACHE_LIMIT)
+            {
+                return CompletableFuture.failedFuture(new IllegalStateException("NUSH trust read capacity reached"));
+            }
+        }
+        TrustRead read = new TrustRead(module.api().players().moduleData(module, uuid).getBoolean(TRUSTED_KEY, false), now);
+        trustReads.put(uuid, read);
+        read.future.whenComplete((trusted, failure) ->
+        {
+            if (failure != null)
+            {
+                synchronized (this)
+                {
+                    trustReads.remove(uuid, read);
+                }
+            }
+        });
+        return read.future;
     }
 
     public boolean isRestricted(UUID uuid)
@@ -171,20 +361,45 @@ public class Quarantine
         }
     }
 
-    public void markPending(UUID uuid, boolean firstJoin)
+    public void prepareLogin(UUID uuid)
     {
-        pendingUnverified.put(uuid, firstJoin);
+        PendingTrust pending = new PendingTrust(false, System.currentTimeMillis());
+        synchronized (this)
+        {
+            pendingTrust.values().removeIf(value -> pending.time() - value.time() > TimeUnit.MINUTES.toMillis(5));
+            if (closed)
+            {
+                return;
+            }
+            pendingTrust.put(uuid, pending);
+        }
+        try
+        {
+            boolean trusted = readTrust(uuid).join();
+            synchronized (this)
+            {
+                // A completed staff mutation takes precedence over this earlier read.
+                if (pendingTrust.get(uuid) == pending)
+                {
+                    pendingTrust.put(uuid, new PendingTrust(trusted, pending.time()));
+                }
+            }
+        }
+        catch (CompletionException failure)
+        {
+            module.getLogger().error("Unable to read the NUSH staff trust of {}", uuid, failure);
+        }
     }
 
     public void clearPending(UUID uuid)
     {
-        pendingUnverified.remove(uuid);
+        pendingTrust.remove(uuid);
     }
 
-    @Nullable
-    public Boolean consumePending(UUID uuid)
+    private boolean consumePending(UUID uuid)
     {
-        return pendingUnverified.remove(uuid);
+        PendingTrust pending = pendingTrust.remove(uuid);
+        return pending != null && pending.trusted();
     }
 
     // Kicks online restricted players: first-join accounts when firstJoin is true, reconnected ones otherwise.
@@ -206,21 +421,63 @@ public class Quarantine
 
     public synchronized void clear()
     {
-        restrictions.values().forEach(Restriction::cancelExpiry);
-        restrictions.clear();
-        pendingUnverified.clear();
+        closed = true;
+        clearRestrictions();
+        pendingTrust.clear();
+        trustReads.clear();
+        sessions.clear();
     }
 
-    private CompletableFuture<Void> write(UUID uuid)
+    private void clearRestrictions()
     {
-        return module.api().players().moduleData(module, uuid).set(VERIFIED_KEY, true)
-                .whenComplete((ignored, failure) ->
-                {
-                    if (failure != null)
-                    {
-                        module.getLogger().error("Unable to store the NUSH verification of {}", uuid, failure);
-                    }
-                });
+        restrictions.values().forEach(Restriction::cancelExpiry);
+        restrictions.clear();
+    }
+
+    private static final class TrustRead
+    {
+        private final CompletableFuture<Boolean> future;
+        private final long started;
+        // Retain an in-flight read after a staff write so capacity eviction cannot duplicate its I/O.
+        private Boolean updated;
+
+        private TrustRead(CompletableFuture<Boolean> future, long started)
+        {
+            this.future = future;
+            this.started = started;
+        }
+    }
+
+    private record PendingTrust(boolean trusted, long time)
+    {
+    }
+
+    private static final class Session
+    {
+        private final UUID uuid;
+        private final String name;
+        private final boolean firstJoin;
+        private final long joinedAt;
+        private final boolean bypass;
+        private boolean trusted;
+        private long trustRevision;
+        private boolean trustLoaded;
+        private boolean admissionRequired;
+
+        private Session(UUID uuid, String name, boolean firstJoin, long joinedAt, boolean bypass, boolean trusted)
+        {
+            this.uuid = uuid;
+            this.name = name;
+            this.firstJoin = firstJoin;
+            this.joinedAt = joinedAt;
+            this.bypass = bypass;
+            this.trusted = trusted;
+        }
+
+        private boolean exempt()
+        {
+            return trusted || bypass;
+        }
     }
 
     private String nameOf(UUID uuid)

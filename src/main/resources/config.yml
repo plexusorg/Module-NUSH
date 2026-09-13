@@ -4,9 +4,12 @@ server:
   # Should NUSH be enabled or disabled - this is also toggleable via the /nush command
   enabled: false
 
-  # How many minutes a new player stays restricted - this is also settable via /nush time
+  # How many online minutes a player stays restricted - this is also settable via /nush time
   # The minimum is 1 minute.
   wait_time: 5
+
+  # Restrict players who joined within this many minutes before enabling NUSH.
+  recent_join_minutes: 5
 
 feed:
   # How many seconds one staff feed interval lasts
@@ -24,7 +27,7 @@ raid:
   # How many seconds the raid detection windows cover
   window_seconds: 60
 
-  # How many unverified joins in the window trigger a raid alert
+  # How many restricted joins in the window trigger a raid alert
   join_threshold: 10
 
   # How many different restricted players chatting in the window trigger a raid alert

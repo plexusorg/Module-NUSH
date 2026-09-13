@@ -4,7 +4,6 @@ import dev.plex.NUSHModule;
 import dev.plex.nush.Quarantine;
 import dev.plex.nush.StaffFeed;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -34,22 +33,11 @@ public class JoinListener implements Listener
         }
 
         Quarantine quarantine = module.quarantine();
-        Boolean firstJoin = quarantine.consumePending(uuid);
-        if (firstJoin == null)
+        quarantine.joined(player, System.currentTimeMillis(), false);
+        if (module.isEnabled() && quarantine.isRestricted(uuid))
         {
-            quarantine.resume(uuid);
-            return;
+            module.raidDetector().join();
         }
-
-        if (!quarantine.isRestricted(uuid))
-        {
-            quarantine.restrict(player, firstJoin);
-        }
-        quarantine.resume(uuid);
-        module.raidDetector().join();
-        module.feed().alert(module.messageComponent("newPlayerMarked",
-                Placeholder.unparsed("player", player.getName()),
-                Placeholder.unparsed("minutes", String.valueOf(module.getTime()))));
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)

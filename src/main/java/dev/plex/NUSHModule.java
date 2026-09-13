@@ -11,18 +11,14 @@ import dev.plex.nush.FaweHook;
 import dev.plex.nush.Quarantine;
 import dev.plex.nush.RaidDetector;
 import dev.plex.nush.StaffFeed;
-import net.milkbowl.vault.permission.Permission;
 import org.bukkit.Bukkit;
-import org.bukkit.plugin.RegisteredServiceProvider;
+import org.bukkit.entity.Player;
 
-import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 public class NUSHModule extends PlexModule
 {
-    private static final String BYPASS_PERMISSION = "plex.nush.bypass";
     private static final String FAWE_PLUGIN = "FastAsyncWorldEdit";
 
     private ModuleConfiguration config;
@@ -31,7 +27,6 @@ public class NUSHModule extends PlexModule
     private StaffFeed feed;
     private RaidDetector raidDetector;
     private FaweHook faweHook;
-    private final AtomicBoolean missingPermissionsReported = new AtomicBoolean();
     private volatile boolean enabled;
     private volatile int time;
     private volatile boolean shadowActive;
@@ -52,6 +47,7 @@ public class NUSHModule extends PlexModule
         time = requireAtLeastOne("server.wait_time", config.getInt("server.wait_time", 5));
         int intervalSeconds = requireAtLeastOne("feed.interval_seconds", config.getInt("feed.interval_seconds", 10));
         int digestThreshold = requireAtLeastOne("feed.digest_threshold", config.getInt("feed.digest_threshold", 5));
+        int recentJoinMinutes = requireAtLeastOne("server.recent_join_minutes", config.getInt("server.recent_join_minutes", 5));
         int logSize = requireAtLeastOne("log.size", config.getInt("log.size", 50));
         int windowSeconds = requireAtLeastOne("raid.window_seconds", config.getInt("raid.window_seconds", 60));
         int joinThreshold = requireAtLeastOne("raid.join_threshold", config.getInt("raid.join_threshold", 10));
@@ -60,7 +56,7 @@ public class NUSHModule extends PlexModule
         executor = Executors.newSingleThreadScheduledExecutor(
                 Thread.ofPlatform().daemon().name("Plex-NUSH").factory());
         feed = new StaffFeed(this, executor, intervalSeconds, digestThreshold);
-        quarantine = new Quarantine(this, feed, executor, logSize);
+        quarantine = new Quarantine(this, feed, executor, logSize, recentJoinMinutes);
         raidDetector = new RaidDetector(this, feed, windowSeconds, joinThreshold, chatThreshold);
 
         registerListener(new LoginListener(this));
@@ -68,6 +64,20 @@ public class NUSHModule extends PlexModule
         registerListener(new ChatListener(this));
         registerListener(new CommandListener(this));
         feed.start();
+        quarantine.toggle(enabled);
+        for (String name : api().players().onlineNames())
+        {
+            Player player = Bukkit.getPlayerExact(name);
+            if (player != null)
+            {
+                Quarantine owner = quarantine;
+                ownTask(player.getScheduler().run(plugin(), task ->
+                {
+                    owner.joined(player, player.getLastLogin(), true);
+                    owner.loadSessionTrust(player.getUniqueId());
+                }, null));
+            }
+        }
 
         if (Bukkit.getPluginManager().isPluginEnabled(FAWE_PLUGIN))
         {
@@ -89,14 +99,14 @@ public class NUSHModule extends PlexModule
             faweHook.unregister();
             faweHook = null;
         }
+        if (quarantine != null)
+        {
+            quarantine.clear();
+        }
         if (executor != null)
         {
             executor.shutdownNow();
             executor = null;
-        }
-        if (quarantine != null)
-        {
-            quarantine.clear();
         }
         if (feed != null)
         {
@@ -139,8 +149,9 @@ public class NUSHModule extends PlexModule
         return raidDetector;
     }
 
-    public void toggle(boolean toggle)
+    public synchronized void toggle(boolean toggle)
     {
+        quarantine.toggle(toggle);
         enabled = toggle;
         config.set("server.enabled", toggle);
         config.save();
@@ -151,21 +162,6 @@ public class NUSHModule extends PlexModule
         time = minutes;
         config.set("server.wait_time", minutes);
         config.save();
-    }
-
-    public boolean bypassesRestriction(UUID uuid)
-    {
-        // Looked up per call because the permissions plugin may enable after Plex.
-        RegisteredServiceProvider<Permission> provider = Bukkit.getServicesManager().getRegistration(Permission.class);
-        if (provider == null)
-        {
-            if (missingPermissionsReported.compareAndSet(false, true))
-            {
-                getLogger().warn("No Vault permission provider is registered; {} cannot be checked", BYPASS_PERMISSION);
-            }
-            return false;
-        }
-        return provider.getProvider().playerHas((String) null, Bukkit.getOfflinePlayer(uuid), BYPASS_PERMISSION);
     }
 
     private int requireAtLeastOne(String key, int value)

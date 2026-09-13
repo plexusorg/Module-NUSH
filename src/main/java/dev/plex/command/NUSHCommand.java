@@ -98,7 +98,6 @@ public class NUSHCommand extends SimplePlexCommand
                 case "off" ->
                 {
                     module.toggle(false);
-                    module.quarantine().clear();
                     return messageComponent("nushDisabled");
                 }
 
@@ -207,6 +206,12 @@ public class NUSHCommand extends SimplePlexCommand
         module.quarantine().verify(restriction.uuid(), admin)
                 .whenComplete((ignored, failure) ->
                 {
+                    if (failure != null)
+                    {
+                        module.getLogger().error("Unable to store the NUSH staff trust of {}", restriction.uuid(), failure);
+                        sender.sendMessage(messageComponent("trustUpdateFailed"));
+                        return;
+                    }
                     if (!module.feed().receivesAlerts(sender))
                     {
                         sender.sendMessage(messageComponent("playerAllowed",
@@ -221,11 +226,25 @@ public class NUSHCommand extends SimplePlexCommand
     {
         checkPermission(sender, ALLOW_PERMISSION);
         Player target = getNonNullPlayer(name);
-        module.quarantine().revoke(target.getUniqueId());
-        Component revoked = messageComponent("playerRevoked", Placeholder.unparsed("player", target.getName()),
-                Placeholder.unparsed("admin", sender.getName()));
-        module.feed().alert(revoked);
-        return module.feed().receivesAlerts(sender) ? null : revoked;
+        String targetName = target.getName();
+        String admin = sender.getName();
+        module.quarantine().revoke(target.getUniqueId()).whenComplete((ignored, failure) ->
+        {
+            if (failure != null)
+            {
+                module.getLogger().error("Unable to remove the NUSH staff trust of {}", target.getUniqueId(), failure);
+                sender.sendMessage(messageComponent("trustUpdateFailed"));
+                return;
+            }
+            Component revoked = messageComponent("playerRevoked", Placeholder.unparsed("player", targetName),
+                    Placeholder.unparsed("admin", admin));
+            module.feed().alert(revoked);
+            if (!module.feed().receivesAlerts(sender))
+            {
+                sender.sendMessage(revoked);
+            }
+        });
+        return null;
     }
 
     private Component list(CommandSender sender)
