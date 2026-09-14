@@ -49,15 +49,12 @@ public class NUSHModule extends PlexModule
         int digestThreshold = requireAtLeastOne("feed.digest_threshold", config.getInt("feed.digest_threshold", 5));
         int recentJoinMinutes = requireAtLeastOne("server.recent_join_minutes", config.getInt("server.recent_join_minutes", 5));
         int logSize = requireAtLeastOne("log.size", config.getInt("log.size", 50));
-        int windowSeconds = requireAtLeastOne("raid.window_seconds", config.getInt("raid.window_seconds", 60));
-        int joinThreshold = requireAtLeastOne("raid.join_threshold", config.getInt("raid.join_threshold", 10));
-        int chatThreshold = requireAtLeastOne("raid.chat_threshold", config.getInt("raid.chat_threshold", 10));
 
         executor = Executors.newSingleThreadScheduledExecutor(
                 Thread.ofPlatform().daemon().name("Plex-NUSH").factory());
         feed = new StaffFeed(this, executor, intervalSeconds, digestThreshold);
         quarantine = new Quarantine(this, feed, executor, logSize, recentJoinMinutes);
-        raidDetector = new RaidDetector(this, feed, windowSeconds, joinThreshold, chatThreshold);
+        raidDetector = new RaidDetector(this, feed);
 
         registerListener(new LoginListener(this));
         registerListener(new JoinListener(this));
@@ -88,11 +85,16 @@ public class NUSHModule extends PlexModule
         {
             getLogger().warn("FastAsyncWorldEdit is not enabled; WorldEdit commands of restricted players are cancelled");
         }
+        raidDetector.start(executor);
     }
 
     @Override
     public void disable()
     {
+        if (raidDetector != null)
+        {
+            raidDetector.close();
+        }
         shadowActive = false;
         if (faweHook != null)
         {
@@ -111,10 +113,6 @@ public class NUSHModule extends PlexModule
         if (feed != null)
         {
             feed.clear();
-        }
-        if (raidDetector != null)
-        {
-            raidDetector.clear();
         }
     }
 
@@ -162,6 +160,15 @@ public class NUSHModule extends PlexModule
         time = minutes;
         config.set("server.wait_time", minutes);
         config.save();
+    }
+
+    public synchronized void activateRaid()
+    {
+        if (!enabled)
+        {
+            quarantine.toggle(true);
+            enabled = true;
+        }
     }
 
     private int requireAtLeastOne(String key, int value)

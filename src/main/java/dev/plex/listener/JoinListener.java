@@ -2,6 +2,7 @@ package dev.plex.listener;
 
 import dev.plex.NUSHModule;
 import dev.plex.nush.Quarantine;
+import dev.plex.nush.RaidDetector.Signal;
 import dev.plex.nush.StaffFeed;
 import net.kyori.adventure.text.Component;
 import org.bukkit.entity.Player;
@@ -34,10 +35,7 @@ public class JoinListener implements Listener
 
         Quarantine quarantine = module.quarantine();
         quarantine.joined(player, System.currentTimeMillis(), false);
-        if (module.isEnabled() && quarantine.isRestricted(uuid))
-        {
-            module.raidDetector().join();
-        }
+        module.raidDetector().record(Signal.JOIN, uuid);
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)

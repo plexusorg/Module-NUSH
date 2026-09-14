@@ -100,6 +100,7 @@ public class NUSHCommand extends SimplePlexCommand
                 {
                     return messageComponent("nushStatus",
                             Placeholder.parsed("status", module.isEnabled() ? "<green>enabled</green>" : "<red>disabled</red>"),
+                            Placeholder.unparsed("detection", module.raidDetector().status()),
                             Placeholder.unparsed("restricted", String.valueOf(module.quarantine().entries().size())));
                 }
 

@@ -323,6 +323,12 @@ public class Quarantine
         return read.future;
     }
 
+    public synchronized boolean isExempt(UUID uuid)
+    {
+        Session session = sessions.get(uuid);
+        return session == null || session.exempt();
+    }
+
     public boolean isRestricted(UUID uuid)
     {
         return restrictions.containsKey(uuid);

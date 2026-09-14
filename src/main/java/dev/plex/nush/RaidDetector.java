@@ -3,77 +3,193 @@ package dev.plex.nush;
 import dev.plex.NUSHModule;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 
-import java.util.ArrayDeque;
-import java.util.Deque;
-import java.util.HashMap;
+import java.util.EnumMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 
 public class RaidDetector
 {
+    public enum Signal
+    {
+        JOIN("joins", 10, 10),
+        CHAT("chat messages", 5, 30),
+        COMMAND("commands", 2, 40);
+
+        private final String label;
+        private final int seconds;
+        private final int minimum;
+
+        Signal(String label, int seconds, int minimum)
+        {
+            this.label = label;
+            this.seconds = seconds;
+            this.minimum = minimum;
+        }
+    }
+
+    private static final int STARTUP_SECONDS = 60;
+    private static final int QUIET_SECONDS = 120;
+
     private final NUSHModule module;
     private final StaffFeed feed;
-    private final int windowSeconds;
-    private final int joinThreshold;
-    private final int chatThreshold;
-    private final Deque<Long> joins = new ArrayDeque<>();
-    private final Map<UUID, Long> chatters = new HashMap<>();
-    private long lastAlert;
+    private final Map<Signal, TrafficWindow> traffic = new EnumMap<>(Signal.class);
+    private final long started = System.nanoTime();
+    // Share the module monitor with manual toggles. Never acquire it while holding the quarantine monitor.
+    private ScheduledFuture<?> timer;
+    private boolean closed;
+    private boolean raidActive;
+    private long lastElevated;
+    private long lastSample = -1;
 
-    public RaidDetector(NUSHModule module, StaffFeed feed, int windowSeconds, int joinThreshold, int chatThreshold)
+    public RaidDetector(NUSHModule module, StaffFeed feed)
     {
         this.module = module;
         this.feed = feed;
-        this.windowSeconds = windowSeconds;
-        this.joinThreshold = joinThreshold;
-        this.chatThreshold = chatThreshold;
+        for (Signal signal : Signal.values())
+        {
+            traffic.put(signal, new TrafficWindow(signal.seconds, signal.minimum));
+        }
     }
 
-    public synchronized void join()
+    public void start(ScheduledExecutorService executor)
     {
-        long now = System.currentTimeMillis();
-        joins.addLast(now);
-        evaluate(now);
+        timer = executor.scheduleAtFixedRate(() ->
+        {
+            try
+            {
+                tick();
+            }
+            catch (RuntimeException failure)
+            {
+                close();
+                module.getLogger().error("NUSH raid monitoring stopped after a failure", failure);
+                throw failure;
+            }
+        }, 1, 1, TimeUnit.SECONDS);
     }
 
-    public synchronized void chat(UUID uuid)
+    public void record(Signal signal, UUID uuid)
     {
-        long now = System.currentTimeMillis();
-        chatters.put(uuid, now);
-        evaluate(now);
+        synchronized (module)
+        {
+            if (closed || module.quarantine().isExempt(uuid))
+            {
+                return;
+            }
+            long now = seconds();
+            if (signal == Signal.JOIN && now < STARTUP_SECONDS)
+            {
+                return;
+            }
+            traffic.get(signal).record(now);
+            evaluate(now);
+        }
     }
 
-    public synchronized void clear()
+    public String status()
     {
-        joins.clear();
-        chatters.clear();
-        lastAlert = 0;
+        synchronized (module)
+        {
+            if (closed)
+            {
+                return "stopped";
+            }
+            if (raidActive)
+            {
+                return "raid active";
+            }
+            return seconds() < STARTUP_SECONDS ? "monitoring (startup join grace)" : "monitoring";
+        }
+    }
+
+    public void close()
+    {
+        synchronized (module)
+        {
+            closed = true;
+            if (timer != null)
+            {
+                timer.cancel(false);
+            }
+        }
+    }
+
+    private long seconds()
+    {
+        return TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - started);
+    }
+
+    private void tick()
+    {
+        synchronized (module)
+        {
+            long now = seconds();
+            if (closed || now == lastSample)
+            {
+                return;
+            }
+            lastSample = now;
+            evaluate(now);
+            if (raidActive)
+            {
+                return;
+            }
+            for (Map.Entry<Signal, TrafficWindow> entry : traffic.entrySet())
+            {
+                if (entry.getKey() != Signal.JOIN || now >= STARTUP_SECONDS + entry.getKey().seconds)
+                {
+                    entry.getValue().learn(now);
+                }
+            }
+        }
     }
 
     private void evaluate(long now)
     {
-        long cutoff = now - windowSeconds * 1000L;
-        while (!joins.isEmpty() && joins.peekFirst() < cutoff)
+        Signal spike = null;
+        boolean elevated = false;
+        for (Map.Entry<Signal, TrafficWindow> entry : traffic.entrySet())
         {
-            joins.pollFirst();
-        }
-        chatters.values().removeIf(last -> last < cutoff);
-
-        if (joins.size() < joinThreshold && chatters.size() < chatThreshold)
-        {
-            return;
-        }
-        if (lastAlert != 0 && now - lastAlert < windowSeconds * 1000L)
-        {
-            return;
+            TrafficWindow window = entry.getValue();
+            if (spike == null && window.count(now) >= window.trigger())
+            {
+                spike = entry.getKey();
+            }
+            elevated |= window.count(now) >= window.recovery();
         }
 
-        lastAlert = now;
-        feed.alert(module.messageComponent("raidDetected",
-                Placeholder.unparsed("joins", String.valueOf(joins.size())),
-                Placeholder.unparsed("chatters", String.valueOf(chatters.size())),
-                Placeholder.unparsed("seconds", String.valueOf(windowSeconds))));
-        module.getLogger().warn("Possible raid: {} unverified joins and {} restricted players chatting within {} seconds",
-                joins.size(), chatters.size(), windowSeconds);
+        if (spike != null && (!raidActive || !module.isEnabled()))
+        {
+            raidActive = true;
+            traffic.values().forEach(TrafficWindow::freeze);
+            module.activateRaid();
+            TrafficWindow window = traffic.get(spike);
+            feed.alert(module.messageComponent("raidStarted",
+                    Placeholder.unparsed("signal", spike.label),
+                    Placeholder.unparsed("count", String.valueOf(window.count(now))),
+                    Placeholder.unparsed("seconds", String.valueOf(spike.seconds)),
+                    Placeholder.unparsed("limit", String.valueOf(window.trigger()))));
+            module.getLogger().warn("Raid detected: {} {} in {} seconds, limit {}, baseline {}. NUSH is enabled",
+                    window.count(now), spike.label, spike.seconds, window.trigger(), window.baseline());
+        }
+
+        if (raidActive)
+        {
+            if (elevated)
+            {
+                lastElevated = now;
+            }
+            else if (now - lastElevated >= QUIET_SECONDS)
+            {
+                raidActive = false;
+                feed.alert(module.messageComponent("raidQuiet",
+                        Placeholder.unparsed("seconds", String.valueOf(QUIET_SECONDS))));
+                module.getLogger().info("Raid traffic stayed below recovery limits for {} seconds; NUSH state is unchanged",
+                        QUIET_SECONDS);
+            }
+        }
     }
 }

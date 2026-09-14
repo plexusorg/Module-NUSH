@@ -3,6 +3,7 @@ package dev.plex.listener;
 import dev.plex.NUSHModule;
 import dev.plex.nush.Quarantine.Kind;
 import dev.plex.nush.Quarantine.LogEntry;
+import dev.plex.nush.RaidDetector.Signal;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.command.Command;
@@ -32,12 +33,13 @@ public class CommandListener implements Listener
         this.module = module;
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGHEST)
     public void onCommand(PlayerCommandPreprocessEvent event)
     {
         Player player = event.getPlayer();
         UUID uuid = player.getUniqueId();
-        if (!module.isEnabled() || !module.quarantine().isRestricted(uuid))
+        module.raidDetector().record(Signal.COMMAND, uuid);
+        if (event.isCancelled() || !module.isEnabled() || !module.quarantine().isRestricted(uuid))
         {
             return;
         }

@@ -3,6 +3,7 @@ package dev.plex.listener;
 import dev.plex.NUSHModule;
 import dev.plex.nush.Quarantine.Kind;
 import dev.plex.nush.Quarantine.LogEntry;
+import dev.plex.nush.RaidDetector.Signal;
 import io.papermc.paper.event.player.AsyncChatEvent;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
@@ -23,12 +24,13 @@ public class ChatListener implements Listener
         this.module = module;
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGHEST)
     public void onChat(AsyncChatEvent event)
     {
         Player player = event.getPlayer();
         UUID uuid = player.getUniqueId();
-        if (!module.isEnabled() || !module.quarantine().isRestricted(uuid))
+        module.raidDetector().record(Signal.CHAT, uuid);
+        if (event.isCancelled() || !module.isEnabled() || !module.quarantine().isRestricted(uuid))
         {
             return;
         }
@@ -40,7 +42,6 @@ public class ChatListener implements Listener
 
         String text = PlainTextComponentSerializer.plainText().serialize(event.message());
         module.quarantine().record(uuid, new LogEntry(Kind.CHAT, Instant.now(), text));
-        module.raidDetector().chat(uuid);
         module.feed().line(player, Kind.CHAT, rendered, text);
     }
 }
