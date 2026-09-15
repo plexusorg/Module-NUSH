@@ -9,7 +9,8 @@ server:
   # The minimum is 1 minute.
   wait_time: 5
 
-  # Restrict players who joined within this many minutes before enabling NUSH.
+  # For manual activation and enabled startup, restrict players who joined within this many minutes.
+  # Automatic activation selects spike contributors instead. Restrict new arrivals in either mode.
   recent_join_minutes: 5
 
 feed:

@@ -14,6 +14,8 @@ import dev.plex.nush.StaffFeed;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 
+import java.util.Collection;
+import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 
@@ -162,13 +164,10 @@ public class NUSHModule extends PlexModule
         config.save();
     }
 
-    public synchronized void activateRaid()
+    public synchronized void activateRaid(Collection<UUID> contributors)
     {
-        if (!enabled)
-        {
-            quarantine.toggle(true);
-            enabled = true;
-        }
+        quarantine.admitRaid(contributors);
+        enabled = true;
     }
 
     private int requireAtLeastOne(String key, int value)

@@ -4,7 +4,9 @@ import dev.plex.NUSHModule;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 
 import java.util.EnumMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -84,7 +86,7 @@ public class RaidDetector
             {
                 return;
             }
-            traffic.get(signal).record(now);
+            traffic.get(signal).record(now, uuid);
             evaluate(now);
         }
     }
@@ -151,9 +153,11 @@ public class RaidDetector
     {
         Signal spike = null;
         boolean elevated = false;
+        Set<UUID> contributors = new HashSet<>();
         for (Map.Entry<Signal, TrafficWindow> entry : traffic.entrySet())
         {
             TrafficWindow window = entry.getValue();
+            contributors.addAll(window.pollContributors(now, !module.isEnabled()));
             if (spike == null && window.count(now) >= window.trigger())
             {
                 spike = entry.getKey();
@@ -161,11 +165,15 @@ public class RaidDetector
             elevated |= window.count(now) >= window.recovery();
         }
 
-        if (spike != null && (!raidActive || !module.isEnabled()))
+        boolean starting = spike != null && (!raidActive || !module.isEnabled());
+        if (spike != null)
+        {
+            module.activateRaid(contributors);
+        }
+        if (starting)
         {
             raidActive = true;
             traffic.values().forEach(TrafficWindow::freeze);
-            module.activateRaid();
             TrafficWindow window = traffic.get(spike);
             feed.alert(module.messageComponent("raidStarted",
                     Placeholder.unparsed("signal", spike.label),

@@ -3,6 +3,11 @@ package dev.plex.nush;
 import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.Deque;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 
 final class TrafficWindow
 {
@@ -15,6 +20,10 @@ final class TrafficWindow
     private final int[] buckets;
     private final double[] history = new double[HISTORY_SIZE];
     private final Deque<Sample> pending = new ArrayDeque<>();
+    private final Map<UUID, Long> contributors = new HashMap<>();
+    private final Set<UUID> changedContributors = new HashSet<>();
+    private long lastPruned = -1;
+    private boolean aboveLimit;
     private int historySize;
     private int historyIndex;
     private double baseline;
@@ -30,8 +39,10 @@ final class TrafficWindow
         buckets = new int[seconds + 1];
     }
 
-    void record(long now)
+    void record(long now, UUID uuid)
     {
+        contributors.put(uuid, now);
+        changedContributors.add(uuid);
         int index = (int) (now % buckets.length);
         if (bucketTimes[index] != now)
         {
@@ -42,6 +53,26 @@ final class TrafficWindow
         {
             buckets[index]++;
         }
+    }
+
+    Set<UUID> pollContributors(long now, boolean reactivating)
+    {
+        if (lastPruned != now)
+        {
+            contributors.values().removeIf(time -> time <= now - seconds);
+            changedContributors.retainAll(contributors.keySet());
+            lastPruned = now;
+        }
+        boolean triggering = count(now) >= trigger();
+        Set<UUID> selected = Set.of();
+        if (triggering)
+        {
+            // Revisit the full window only on a crossing or reactivation, not on every spam event.
+            selected = Set.copyOf(!aboveLimit || reactivating ? contributors.keySet() : changedContributors);
+        }
+        changedContributors.clear();
+        aboveLimit = triggering;
+        return selected;
     }
 
     long count(long now)

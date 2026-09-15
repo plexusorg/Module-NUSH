@@ -54,6 +54,7 @@ public class Quarantine
     private final Set<UUID> trustUpdates = new HashSet<>();
     private final long recentJoinMillis;
     private boolean active;
+    private boolean sweepExistingSessions;
     private boolean closed;
 
     public Quarantine(NUSHModule module, StaffFeed feed, ScheduledExecutorService executor, int logSize, int recentJoinMinutes)
@@ -74,7 +75,8 @@ public class Quarantine
         Session session = new Session(player.getUniqueId(), player.getName(),
                 joinedAt, player.hasPermission("plex.nush.bypass"), !existingSession && consumePending(player.getUniqueId()));
         session.trustLoaded = !existingSession;
-        session.admissionRequired = active && session.joinedAt >= System.currentTimeMillis() - recentJoinMillis;
+        session.admissionRequired = active && (!existingSession || sweepExistingSessions)
+                && session.joinedAt >= System.currentTimeMillis() - recentJoinMillis;
         sessions.put(session.uuid, session);
         if (restrictions.containsKey(session.uuid))
         {
@@ -122,6 +124,7 @@ public class Quarantine
             return;
         }
         active = enabled;
+        sweepExistingSessions = enabled;
         if (!enabled)
         {
             clearRestrictions();
@@ -133,6 +136,29 @@ public class Quarantine
         {
             session.admissionRequired = session.joinedAt >= cutoff;
             if (session.admissionRequired && session.trustLoaded && !session.exempt())
+            {
+                restrict(session);
+            }
+        }
+    }
+
+    public synchronized void admitRaid(Collection<UUID> contributors)
+    {
+        if (closed)
+        {
+            return;
+        }
+        active = true;
+        for (UUID uuid : contributors)
+        {
+            Session session = sessions.get(uuid);
+            if (session == null || session.admissionRequired || session.exempt())
+            {
+                continue;
+            }
+            // Keep a completed online wait valid for this session, even while traffic remains elevated.
+            session.admissionRequired = true;
+            if (session.trustLoaded)
             {
                 restrict(session);
             }
