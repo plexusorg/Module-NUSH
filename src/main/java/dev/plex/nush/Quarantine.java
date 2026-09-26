@@ -366,19 +366,6 @@ public class Quarantine
         return restrictions.get(uuid);
     }
 
-    @Nullable
-    public Restriction byName(String name)
-    {
-        for (Restriction restriction : restrictions.values())
-        {
-            if (restriction.name().equalsIgnoreCase(name))
-            {
-                return restriction;
-            }
-        }
-        return null;
-    }
-
     public Collection<Restriction> entries()
     {
         return Collections.unmodifiableCollection(restrictions.values());

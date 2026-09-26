@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Consumer;
 
 public class NUSHCommand extends SimplePlexCommand
 {
@@ -187,12 +188,12 @@ public class NUSHCommand extends SimplePlexCommand
     private Component allow(CommandSender sender, String name)
     {
         checkPermission(sender, ALLOW_PERMISSION);
-        Restriction restriction = module.quarantine().byName(name);
-        if (restriction == null)
-        {
-            return messageComponent("playerNotNushed");
-        }
+        resolveRestriction(sender, name, restriction -> allow(sender, restriction));
+        return null;
+    }
 
+    private void allow(CommandSender sender, Restriction restriction)
+    {
         String admin = sender.getName();
         module.quarantine().verify(restriction.uuid(), admin)
                 .whenComplete((ignored, failure) ->
@@ -210,7 +211,6 @@ public class NUSHCommand extends SimplePlexCommand
                                 Placeholder.unparsed("admin", admin)));
                     }
                 });
-        return null;
     }
 
     private Component revoke(CommandSender sender, String name)
@@ -262,12 +262,35 @@ public class NUSHCommand extends SimplePlexCommand
 
     private Component log(CommandSender sender, String name)
     {
-        Restriction restriction = module.quarantine().byName(name);
-        if (restriction == null)
-        {
-            return messageComponent("playerNotNushed");
-        }
+        resolveRestriction(sender, name, restriction -> showLog(sender, restriction));
+        return null;
+    }
 
+    private void resolveRestriction(CommandSender sender, String name, Consumer<Restriction> action)
+    {
+        api().players().resolveCommandPlayer(name).whenComplete((target, failure) ->
+        {
+            if (failure != null)
+            {
+                if (!sendPlayerLookupFailure(sender, failure))
+                {
+                    module.getLogger().error("Unable to look up NUSH target {}", name, failure);
+                    sender.sendMessage(Component.text("Player lookup failed."));
+                }
+                return;
+            }
+            Restriction resolved = target.map(view -> module.quarantine().entry(view.uuid())).orElse(null);
+            if (resolved == null)
+            {
+                sender.sendMessage(messageComponent("playerNotNushed"));
+                return;
+            }
+            action.accept(resolved);
+        });
+    }
+
+    private void showLog(CommandSender sender, Restriction restriction)
+    {
         sender.sendMessage(messageComponent("logHeader", Placeholder.unparsed("player", restriction.name())));
         Instant now = Instant.now();
         for (LogEntry entry : restriction.log())
@@ -277,7 +300,6 @@ public class NUSHCommand extends SimplePlexCommand
                     Placeholder.unparsed("kind", entry.kind().name().toLowerCase(Locale.ROOT)),
                     Placeholder.unparsed("text", entry.text())));
         }
-        return null;
     }
 
     private Component toggleFeed(CommandSender sender)
